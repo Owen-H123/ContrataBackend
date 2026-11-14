@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Configuración local y secretos
+.env
+.env.*
+!.env.example
+
+# Archivos subidos en desarrollo
+uploads/
+
+.DS_Store
+*.log
