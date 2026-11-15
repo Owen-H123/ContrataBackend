@@ -4,12 +4,13 @@ import { Usuario } from '../../../core/usuarios/entities/usuario.entity.js';
 import { Informe } from './informe.entity.js';
 
 export enum AccionRevision {
-  ENVIADO = 'ENVIADO',
-  APROBADO = 'APROBADO',
-  OBSERVADO = 'OBSERVADO',
+  /** El técnico terminó la ejecución. */
+  FINALIZADO = 'FINALIZADO',
+  /** Se volvió a abrir para seguir cargando fotos o ítems. */
+  REABIERTO = 'REABIERTO',
 }
 
-/** Historial del informe: cada envío, aprobación u observación, con quién y cuándo. */
+/** Historial del informe: cada cierre y reapertura de la ejecución, con quién y cuándo. */
 @Entity('revisiones_informe')
 export class RevisionInforme extends EntidadBase {
   @Index()
@@ -23,7 +24,7 @@ export class RevisionInforme extends EntidadBase {
   @Column({ type: 'enum', enum: AccionRevision })
   accion: AccionRevision;
 
-  /** Obligatorio al observar: qué hay que corregir. */
+  /** Motivo, por ejemplo al reabrir: qué falta. */
   @Column({ type: 'varchar', length: 1000, nullable: true })
   comentario: string | null;
 

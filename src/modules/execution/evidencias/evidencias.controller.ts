@@ -26,7 +26,8 @@ import { EvidenciasService } from './evidencias.service.js';
 
 /**
  * Fotos de un informe. Cargar, confirmar, comentar y quitar: el técnico asignado
- * (solo sus propias fotos) o ADMIN, mientras el informe sea editable.
+ * (solo sus propias fotos) o ADMIN, mientras la ejecución esté abierta.
+ * Descartar y restaurar al revisar: ADMIN, también con la ejecución finalizada.
  * Descargar: cualquiera que pueda ver el informe.
  */
 @Controller('informes/:id')
@@ -75,6 +76,18 @@ export class EvidenciasController {
     @CurrentUser() usuario: UsuarioAutenticado,
   ) {
     return this.evidencias.ocultar(id, evidenciaId, usuario);
+  }
+
+  /** Devuelve al informe una foto descartada (solo ADMIN). */
+  @Roles(Rol.ADMIN)
+  @Post('evidencias/:evidenciaId/restaurar')
+  @HttpCode(HttpStatus.OK)
+  restaurar(
+    @Param('id', { schema: idSchema }) id: string,
+    @Param('evidenciaId', { schema: idSchema }) evidenciaId: string,
+    @CurrentUser() usuario: UsuarioAutenticado,
+  ) {
+    return this.evidencias.restaurar(id, evidenciaId, usuario);
   }
 
   @Get('evidencias/:evidenciaId/descarga')

@@ -30,9 +30,10 @@ const archivo = {
 
 /**
  * Pedir un enlace para subir una foto.
- * - ACTIVIDAD: indica la actividad (`itemId`) y la etapa.
- * - EPP: indica qué técnico aparece; si lo sube un técnico y no lo indica, es él mismo.
- * - GENERAL: foto general del sitio.
+ * - ACTIVIDAD: indica el ítem (`itemId`) y la etapa (antes, durante o finalizado).
+ * - EPP: foto del personal con su equipo de protección; `tecnicoId` es opcional.
+ * - PANORAMICA: panorámica de la torre completa.
+ * - ESTACION: foto de las estaciones y equipos.
  */
 export const solicitarSubidaSchema = z.discriminatedUnion('tipo', [
   z.object({
@@ -46,10 +47,8 @@ export const solicitarSubidaSchema = z.discriminatedUnion('tipo', [
     tecnicoId: z.uuid('El técnico no es válido').optional(),
     ...archivo,
   }),
-  z.object({
-    tipo: z.literal(TipoEvidencia.GENERAL),
-    ...archivo,
-  }),
+  z.object({ tipo: z.literal(TipoEvidencia.PANORAMICA), ...archivo }),
+  z.object({ tipo: z.literal(TipoEvidencia.ESTACION), ...archivo }),
 ]);
 export type SolicitarSubidaDto = z.infer<typeof solicitarSubidaSchema>;
 

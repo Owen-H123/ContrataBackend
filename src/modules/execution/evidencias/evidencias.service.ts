@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto';
 import {
-  BadRequestException,
   ConflictException,
   ForbiddenException,
   Injectable,
@@ -11,7 +10,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { ZipArchive } from 'archiver';
 import type { Response } from 'express';
-import { IsNull, Repository } from 'typeorm';
+import { IsNull, Not, Repository } from 'typeorm';
 import type { UsuarioAutenticado } from '../../../core/auth/types/usuario-autenticado.js';
 import type { EtapaEvidencia } from '../../../shared/enums/etapa-evidencia.enum.js';
 import { Rol } from '../../../shared/enums/rol.enum.js';
@@ -35,8 +34,8 @@ const SEGUNDOS_SUBIDA = 15 * 60;
 
 const CARPETA_ETAPA: Record<EtapaEvidencia, string> = {
   ANTES: 'Antes',
-  PROCESO: 'Proceso',
-  DESPUES: 'Después',
+  DURANTE: 'Durante',
+  FINALIZADO: 'Finalizado',
 };
 
 export interface SubidaDto {
@@ -90,12 +89,9 @@ export class EvidenciasService {
       }
       itemId = item.id;
       etapa = dto.etapa;
-    } else if (dto.tipo === TipoEvidencia.EPP) {
-      tecnicoId =
-        dto.tecnicoId ?? (usuario.rol === Rol.TECNICO ? usuario.id : null);
-      if (!tecnicoId) {
-        throw new BadRequestException('Indica qué técnico aparece en la foto');
-      }
+    } else if (dto.tipo === TipoEvidencia.EPP && dto.tecnicoId) {
+      // El técnico que aparece en la foto es opcional; si se indica, debe estar asignado.
+      tecnicoId = dto.tecnicoId;
       if (!informe.tecnicos?.some((t) => t.id === tecnicoId)) {
         throw new ConflictException('Ese técnico no está asignado al informe');
       }
@@ -171,18 +167,46 @@ export class EvidenciasService {
     return this.presentar(await this.cargar(informe.id, evidencia.id));
   }
 
-  /** Quita la foto del informe sin borrar el archivo: queda oculta y registrada. */
+  /**
+   * Quita la foto del informe sin borrar el archivo: queda descartada y registrada.
+   * El autor puede quitar la suya mientras la ejecución está abierta; un ADMIN
+   * puede descartar cualquiera, también al revisar con la ejecución finalizada.
+   */
   async ocultar(
     informeId: string,
     evidenciaId: string,
     usuario: UsuarioAutenticado,
   ): Promise<void> {
-    const informe = await this.informes.buscarParaEditar(informeId, usuario);
+    const informe =
+      usuario.rol === Rol.ADMIN
+        ? await this.informes.buscarParaVer(informeId, usuario)
+        : await this.informes.buscarParaEditar(informeId, usuario);
     const evidencia = await this.buscarPropia(informe.id, evidenciaId, usuario);
     await this.evidencias.update(evidencia.id, {
       ocultaEn: new Date(),
       ocultaPorId: usuario.id,
     });
+  }
+
+  /** Devuelve al informe una foto descartada (solo ADMIN). */
+  async restaurar(
+    informeId: string,
+    evidenciaId: string,
+    usuario: UsuarioAutenticado,
+  ): Promise<EvidenciaDto> {
+    const informe = await this.informes.buscarParaVer(informeId, usuario);
+    const evidencia = await this.evidencias.findOneBy({
+      id: evidenciaId,
+      informeId: informe.id,
+      confirmada: true,
+      ocultaEn: Not(IsNull()),
+    });
+    if (!evidencia) throw new NotFoundException('La foto descartada no existe');
+    await this.evidencias.update(evidencia.id, {
+      ocultaEn: null,
+      ocultaPorId: null,
+    });
+    return this.presentar(await this.cargar(informe.id, evidencia.id));
   }
 
   /** Enlace para descargar la foto con su nombre original. */
@@ -313,33 +337,73 @@ function unaEntrada(zip: ZipArchive): Promise<void> {
   });
 }
 
-/** Ruta de cada foto dentro del ZIP, numerada dentro de su carpeta. */
+/** Orden de las carpetas en el ZIP: primero el sitio, luego el EPP y al final los trabajos. */
+const ORDEN_TIPO: Record<TipoEvidencia, number> = {
+  [TipoEvidencia.PANORAMICA]: 1,
+  [TipoEvidencia.ESTACION]: 2,
+  [TipoEvidencia.EPP]: 3,
+  [TipoEvidencia.ACTIVIDAD]: 4,
+};
+
+const ORDEN_ETAPA: Record<EtapaEvidencia, number> = {
+  ANTES: 1,
+  DURANTE: 2,
+  FINALIZADO: 3,
+};
+
+/**
+ * Ruta de cada foto dentro del ZIP. Todo lleva números para que, al ordenar por
+ * nombre, quede en la secuencia del informe: sitio, EPP y luego cada trabajo con
+ * sus etapas; dentro de cada carpeta, por hora en que se tomó la foto.
+ */
 function rutasEnZip(
   evidencias: Evidencia[],
   items: ItemOrden[],
 ): { evidencia: Evidencia; ruta: string }[] {
+  const posicion = new Map(items.map((i) => [i.id, i.posicion]));
+  const momento = (e: Evidencia) => (e.tomadaEn ?? e.creadoEn).getTime();
+  const ordenadas = [...evidencias].sort(
+    (a, b) =>
+      ORDEN_TIPO[a.tipo] - ORDEN_TIPO[b.tipo] ||
+      (posicion.get(a.itemId ?? '') ?? 0) -
+        (posicion.get(b.itemId ?? '') ?? 0) ||
+      (a.etapa ? ORDEN_ETAPA[a.etapa] : 0) -
+        (b.etapa ? ORDEN_ETAPA[b.etapa] : 0) ||
+      momento(a) - momento(b),
+  );
+
   const contadores = new Map<string, number>();
-  return evidencias.map((evidencia) => {
+  return ordenadas.map((evidencia) => {
     const carpeta = carpetaDe(evidencia, items);
     const n = (contadores.get(carpeta) ?? 0) + 1;
     contadores.set(carpeta, n);
     const extension = evidencia.clave.split('.').pop();
-    return { evidencia, ruta: `${carpeta}/${n}.${extension}` };
+    return {
+      evidencia,
+      ruta: `${carpeta}/${String(n).padStart(3, '0')}.${extension}`,
+    };
   });
 }
 
 function carpetaDe(evidencia: Evidencia, items: ItemOrden[]): string {
-  if (evidencia.tipo === TipoEvidencia.EPP) {
-    return `EPP/${limpiar(evidencia.tecnico?.nombre ?? 'Técnico')}`;
+  switch (evidencia.tipo) {
+    case TipoEvidencia.PANORAMICA:
+      return '1 Estado del sitio/1 Panorámicas de la torre';
+    case TipoEvidencia.ESTACION:
+      return '1 Estado del sitio/2 Estaciones y equipos';
+    case TipoEvidencia.EPP:
+      return '2 EPP';
+    default: {
+      const item = items.find((i) => i.id === evidencia.itemId);
+      const actividad = item
+        ? `${String(item.posicion).padStart(3, '0')} ${limpiar(item.descripcion)}`
+        : 'Otras';
+      const etapa = evidencia.etapa
+        ? `${ORDEN_ETAPA[evidencia.etapa]} ${CARPETA_ETAPA[evidencia.etapa]}`
+        : 'Sin etapa';
+      return `3 Ejecución/${actividad}/${etapa}`;
+    }
   }
-  if (evidencia.tipo === TipoEvidencia.GENERAL) return 'Fotos generales';
-
-  const item = items.find((i) => i.id === evidencia.itemId);
-  const actividad = item
-    ? `${String(item.posicion).padStart(3, '0')} ${limpiar(item.descripcion)}`
-    : 'Otras';
-  const etapa = evidencia.etapa ? CARPETA_ETAPA[evidencia.etapa] : 'Sin etapa';
-  return `Actividades/${actividad}/${etapa}`;
 }
 
 /** Quita caracteres que no se permiten en nombres de archivo o carpeta. */

@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, IsNull, Repository } from 'typeorm';
+import { In, IsNull, Not, Repository } from 'typeorm';
 import type { UsuarioAutenticado } from '../../../core/auth/types/usuario-autenticado.js';
 import { escaparLike } from '../../../shared/database/escapar-like.js';
 import { redondear2 } from '../../../shared/entities/numerico.transformer.js';
@@ -27,11 +27,13 @@ import {
   presentarEvidencia,
 } from '../evidencias/evidencia.presenter.js';
 import { calcularProgreso, type Progreso } from './completitud.js';
+import { coordenadasDeEnlace } from './enlace-maps.js';
 import type {
   AsignarTecnicosDto,
   CrearInformeDto,
   FiltrosInformeDto,
-  RevisarInformeDto,
+  ReabrirInformeDto,
+  AgregarActividadDto,
   UbicacionDto,
 } from './dto/informe.schema.js';
 import {
@@ -105,11 +107,15 @@ export interface InformeDetalle extends CabeceraInforme {
   actividades: ActividadDto[];
   /** Fotos de los técnicos con su equipo de protección personal. */
   epp: EvidenciaDto[];
-  /** Fotos generales del sitio. */
-  generales: EvidenciaDto[];
-  /** Qué falta para poder enviar. */
+  /** Fotos panorámicas de la torre completa. */
+  panoramicas: EvidenciaDto[];
+  /** Fotos de las estaciones y equipos. */
+  estaciones: EvidenciaDto[];
+  /** Fotos descartadas en la revisión; solo las ven ADMIN y SUPERVISOR. */
+  descartadas: EvidenciaDto[];
+  /** Qué falta para poder finalizar la ejecución. */
   progreso: Progreso;
-  /** Envíos, aprobaciones y observaciones, del más antiguo al más reciente. */
+  /** Cierres y reaperturas de la ejecución, del más antiguo al más reciente. */
   historial: RevisionDto[];
 }
 
@@ -180,9 +186,11 @@ export class InformesService {
     usuario: UsuarioAutenticado,
   ): Promise<InformeDetalle> {
     const informe = await this.buscarParaVer(id, usuario);
-    const [items, evidencias, revisiones] = await Promise.all([
+    const verDescartadas = usuario.rol !== Rol.TECNICO;
+    const [items, evidencias, ocultas, revisiones] = await Promise.all([
       this.actividadesDe(informe),
       this.evidenciasVisibles(informe.id),
+      verDescartadas ? this.evidenciasDescartadas(informe.id) : [],
       this.revisiones.find({
         where: { informeId: informe.id },
         relations: { usuario: true },
@@ -190,16 +198,21 @@ export class InformesService {
       }),
     ]);
 
-    const fotos = await Promise.all(
-      evidencias.map(async (e) =>
-        presentarEvidencia(
-          e,
-          this.storage.configurado
-            ? await this.storage.urlParaDescargar(e.clave)
-            : null,
+    const presentar = (lista: Evidencia[]) =>
+      Promise.all(
+        lista.map(async (e) =>
+          presentarEvidencia(
+            e,
+            this.storage.configurado
+              ? await this.storage.urlParaDescargar(e.clave)
+              : null,
+          ),
         ),
-      ),
-    );
+      );
+    const [fotos, descartadas] = await Promise.all([
+      presentar(evidencias),
+      presentar(ocultas),
+    ]);
     const conPrecios = usuario.rol !== Rol.TECNICO;
     const sitio = informe.sitio!;
 
@@ -216,7 +229,9 @@ export class InformesService {
       ubicacion: ubicacionDe(informe),
       actividades: items.map((item) => actividad(item, fotos, conPrecios)),
       epp: fotos.filter((f) => f.tipo === TipoEvidencia.EPP),
-      generales: fotos.filter((f) => f.tipo === TipoEvidencia.GENERAL),
+      panoramicas: fotos.filter((f) => f.tipo === TipoEvidencia.PANORAMICA),
+      estaciones: fotos.filter((f) => f.tipo === TipoEvidencia.ESTACION),
+      descartadas,
       progreso: progresoDe(informe, items, evidencias),
       historial: revisiones.map((r) => ({
         accion: r.accion,
@@ -270,8 +285,10 @@ export class InformesService {
     usuario: UsuarioAutenticado,
   ): Promise<InformeDetalle> {
     const informe = await this.buscarParaVer(id, usuario);
-    if (informe.estado === EstadoInforme.APROBADO) {
-      throw new ConflictException('El informe ya está aprobado');
+    if (informe.estado === EstadoInforme.FINALIZADO) {
+      throw new ConflictException(
+        'La ejecución ya está finalizada; reábrela para cambiar los técnicos',
+      );
     }
     informe.tecnicos = await this.usuarios.exigirTecnicosActivos(
       dto.tecnicoIds,
@@ -280,25 +297,27 @@ export class InformesService {
     return this.obtener(id, usuario);
   }
 
-  /** Guarda la ubicación tomada en campo (latitud y longitud del celular). */
+  /**
+   * Guarda la ubicación del sitio. Llega como coordenadas (GPS del celular)
+   * o como link de Google Maps, del que se sacan las coordenadas.
+   */
   async registrarUbicacion(
     id: string,
     dto: UbicacionDto,
     usuario: UsuarioAutenticado,
   ): Promise<InformeDetalle> {
     const informe = await this.buscarParaEditar(id, usuario);
-    await this.informes.update(informe.id, {
-      latitud: dto.latitud,
-      longitud: dto.longitud,
-    });
+    const { latitud, longitud } =
+      'enlace' in dto ? await coordenadasDeEnlace(dto.enlace) : dto;
+    await this.informes.update(informe.id, { latitud, longitud });
     return this.obtener(id, usuario);
   }
 
   /**
-   * Envía el informe a revisión. Solo si está completo: si falta algo,
+   * Da por terminada la ejecución. Solo si está completo: si falta algo,
    * responde 409 con la lista de faltantes en `detalles`.
    */
-  async enviar(
+  async finalizar(
     id: string,
     usuario: UsuarioAutenticado,
   ): Promise<InformeDetalle> {
@@ -316,34 +335,48 @@ export class InformesService {
     }
     await this.cambiarEstado(
       informe,
-      EstadoInforme.ENVIADO,
-      AccionRevision.ENVIADO,
+      EstadoInforme.FINALIZADO,
+      AccionRevision.FINALIZADO,
       null,
       usuario,
     );
     return this.obtener(id, usuario);
   }
 
-  /** Aprueba u observa un informe ENVIADO. Al observar, el comentario es obligatorio. */
-  async revisar(
+  /** Vuelve a abrir la ejecución para seguir cargando fotos o ítems. */
+  async reabrir(
     id: string,
-    dto: RevisarInformeDto,
+    dto: ReabrirInformeDto,
     usuario: UsuarioAutenticado,
   ): Promise<InformeDetalle> {
     const informe = await this.buscarParaVer(id, usuario);
-    if (informe.estado !== EstadoInforme.ENVIADO) {
-      throw new ConflictException(
-        `Solo se revisa un informe ENVIADO; este está ${informe.estado}`,
-      );
+    if (informe.estado !== EstadoInforme.FINALIZADO) {
+      throw new ConflictException('La ejecución ya está abierta');
     }
-    const aprobar = dto.decision === 'APROBAR';
     await this.cambiarEstado(
       informe,
-      aprobar ? EstadoInforme.APROBADO : EstadoInforme.OBSERVADO,
-      aprobar ? AccionRevision.APROBADO : AccionRevision.OBSERVADO,
+      EstadoInforme.EN_EJECUCION,
+      AccionRevision.REABIERTO,
       dto.comentario ?? null,
       usuario,
     );
+    return this.obtener(id, usuario);
+  }
+
+  /**
+   * Agrega un ítem a la orden, en el sitio de este informe. Aparece de inmediato
+   * a los técnicos, que pueden subir sus fotos hasta finalizar la ejecución.
+   */
+  async agregarActividad(
+    id: string,
+    dto: AgregarActividadDto,
+    usuario: UsuarioAutenticado,
+  ): Promise<InformeDetalle> {
+    const informe = await this.buscarParaEditar(id, usuario);
+    await this.ordenes.agregarItem(informe.ordenId, {
+      ...dto,
+      sitioId: informe.sitioId,
+    });
     return this.obtener(id, usuario);
   }
 
@@ -367,7 +400,7 @@ export class InformesService {
     return informe;
   }
 
-  /** Solo se edita en EN_EJECUCION u OBSERVADO. */
+  /** Solo se edita mientras la ejecución está abierta (EN_EJECUCION). */
   async buscarParaEditar(
     id: string,
     usuario: UsuarioAutenticado,
@@ -393,6 +426,15 @@ export class InformesService {
   evidenciasVisibles(informeId: string): Promise<Evidencia[]> {
     return this.evidencias.find({
       where: { informeId, confirmada: true, ocultaEn: IsNull() },
+      relations: { tecnico: true, subidoPor: true },
+      order: { creadoEn: 'ASC' },
+    });
+  }
+
+  /** Fotos descartadas en la revisión (ocultas, pero conservadas), con el técnico y el autor. */
+  evidenciasDescartadas(informeId: string): Promise<Evidencia[]> {
+    return this.evidencias.find({
+      where: { informeId, confirmada: true, ocultaEn: Not(IsNull()) },
       relations: { tecnico: true, subidoPor: true },
       order: { creadoEn: 'ASC' },
     });

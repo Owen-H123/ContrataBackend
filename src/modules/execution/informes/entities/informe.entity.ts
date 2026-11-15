@@ -14,25 +14,18 @@ import { Sitio } from '../../../master/sitios/entities/sitio.entity.js';
 import { OrdenCompra } from '../../../planning/ordenes-compra/entities/orden-compra.entity.js';
 
 export enum EstadoInforme {
-  /** Los técnicos están cargando evidencias. */
+  /** Los técnicos están cargando fotos y se pueden agregar ítems. */
   EN_EJECUCION = 'EN_EJECUCION',
-  /** Enviado a revisión; los técnicos ya no lo editan. */
-  ENVIADO = 'ENVIADO',
-  /** El revisor pidió correcciones; vuelve a ser editable. */
-  OBSERVADO = 'OBSERVADO',
-  /** Aprobado; queda cerrado. */
-  APROBADO = 'APROBADO',
+  /** El técnico terminó la ejecución; queda para revisar y descargar. */
+  FINALIZADO = 'FINALIZADO',
 }
 
 /** Estados en los que los técnicos pueden cargar o corregir información. */
-export const ESTADOS_EDITABLES = [
-  EstadoInforme.EN_EJECUCION,
-  EstadoInforme.OBSERVADO,
-];
+export const ESTADOS_EDITABLES = [EstadoInforme.EN_EJECUCION];
 
 /**
  * Informe de trabajo de una orden en un sitio (como el «Informe correctivo» de Sytex).
- * Reúne las actividades de esa orden en ese sitio y es lo que se envía y se aprueba.
+ * Reúne las actividades de esa orden en ese sitio; los técnicos suben sus fotos hasta finalizar la ejecución.
  */
 @Entity('informes')
 @Unique(['ordenId', 'sitioId'])

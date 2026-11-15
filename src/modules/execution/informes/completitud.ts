@@ -1,6 +1,13 @@
 import type { EtapaEvidencia } from '../../../shared/enums/etapa-evidencia.enum.js';
 import { TipoEvidencia } from '../evidencias/entities/evidencia.entity.js';
 
+/** Fotos mínimas que se exigen al llegar a la estación. */
+export const MINIMO = {
+  PANORAMICAS: 2,
+  ESTACIONES: 2,
+  EPP: 2,
+} as const;
+
 export interface RequisitosInforme {
   tecnicos: { id: string; nombre: string }[];
   tieneUbicacion: boolean;
@@ -15,7 +22,6 @@ export interface RequisitosInforme {
     tipo: TipoEvidencia;
     itemId: string | null;
     etapa: EtapaEvidencia | null;
-    tecnicoId: string | null;
   }[];
 }
 
@@ -29,17 +35,19 @@ export interface Progreso {
 
 const NOMBRE_ETAPA: Record<EtapaEvidencia, string> = {
   ANTES: 'antes',
-  PROCESO: 'proceso',
-  DESPUES: 'después',
+  DURANTE: 'durante',
+  FINALIZADO: 'finalizado',
 };
 
 /**
- * Qué le falta al informe para poder enviarse:
+ * Qué le falta al informe para poder finalizar la ejecución:
  * - al menos un técnico asignado;
- * - la ubicación tomada en campo;
- * - al menos una foto general del sitio;
- * - una foto de EPP de cada técnico asignado (no negociable);
- * - una foto por cada etapa que exige cada actividad.
+ * - la ubicación del sitio;
+ * - 2 fotos panorámicas de la torre completa y 2 de las estaciones y equipos;
+ * - 2 fotos de EPP;
+ * - al menos una foto por cada etapa que exige cada actividad.
+ *
+ * Subir más fotos de las mínimas siempre está bien: luego se descartan las que sobran.
  */
 export function calcularProgreso(r: RequisitosInforme): Progreso {
   const faltantes: string[] = [];
@@ -48,24 +56,35 @@ export function calcularProgreso(r: RequisitosInforme): Progreso {
     total += 1;
     if (!cumple) faltantes.push(falta);
   };
+  const cuantas = (tipo: TipoEvidencia) =>
+    r.evidencias.filter((e) => e.tipo === tipo).length;
 
   exigir(r.tecnicos.length > 0, 'Asigna al menos un técnico');
   exigir(r.tieneUbicacion, 'Falta registrar la ubicación del sitio');
-  exigir(
-    r.evidencias.some((e) => e.tipo === TipoEvidencia.GENERAL),
-    'Faltan fotos generales del sitio',
-  );
 
-  const conEpp = new Set(
-    r.evidencias
-      .filter((e) => e.tipo === TipoEvidencia.EPP)
-      .map((e) => e.tecnicoId),
-  );
-  if (r.tecnicos.length === 0) {
-    exigir(conEpp.size > 0, 'Falta la foto de EPP de los técnicos');
-  }
-  for (const tecnico of r.tecnicos) {
-    exigir(conEpp.has(tecnico.id), `Falta la foto de EPP de ${tecnico.nombre}`);
+  const grupos: [TipoEvidencia, number, string, string][] = [
+    [
+      TipoEvidencia.PANORAMICA,
+      MINIMO.PANORAMICAS,
+      'panorámica de la torre completa',
+      'panorámicas de la torre completa',
+    ],
+    [
+      TipoEvidencia.ESTACION,
+      MINIMO.ESTACIONES,
+      'de las estaciones y equipos',
+      'de las estaciones y equipos',
+    ],
+    [TipoEvidencia.EPP, MINIMO.EPP, 'de EPP', 'de EPP'],
+  ];
+  for (const [tipo, minimo, singular, plural] of grupos) {
+    const faltan = minimo - cuantas(tipo);
+    exigir(
+      faltan <= 0,
+      faltan === 1
+        ? `Falta 1 foto ${singular}`
+        : `Faltan ${faltan} fotos ${plural}`,
+    );
   }
 
   const etapasConFoto = new Set(

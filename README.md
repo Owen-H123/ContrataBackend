@@ -104,15 +104,17 @@ Todas bajo `/api`. Las de consulta piden sesión; las de escritura, el rol indic
 | `GET /informes/:id` | Sesión | Informe con sus actividades; un TECNICO lo ve sin precios |
 | `POST /informes` | ADMIN | Abre el informe de una orden en un sitio y asigna técnicos |
 | `PUT /informes/:id/tecnicos` | ADMIN | Reemplaza los técnicos asignados |
-| `PATCH /informes/:id/ubicacion` | ADMIN, técnico asignado | Guarda la ubicación tomada en campo |
-| `POST /informes/:id/enviar` | ADMIN, técnico asignado | Envía a revisión; 409 con la lista de faltantes si está incompleto |
-| `POST /informes/:id/revision` | ADMIN, SUPERVISOR | Aprobar u observar; al observar, el comentario es obligatorio |
+| `PATCH /informes/:id/ubicacion` | ADMIN, técnico asignado | Guarda la ubicación: `{ latitud, longitud }` o `{ enlace }` con un link de Google Maps (o texto «lat, lng») |
+| `POST /informes/:id/finalizar` | ADMIN, técnico asignado | Da por terminada la ejecución; 409 con la lista de faltantes si está incompleto |
+| `POST /informes/:id/reabrir` | ADMIN | Vuelve a abrir la ejecución (con comentario opcional) para seguir cargando fotos o ítems |
+| `POST /informes/:id/actividades` | ADMIN | Agrega un ítem en el sitio del informe; los técnicos lo ven al instante |
 | `POST /informes/:id/evidencias` | ADMIN, técnico asignado | Registra una foto y devuelve el enlace para subirla a R2 |
 | `POST /informes/:id/evidencias/:evidenciaId/confirmar` | Autor o ADMIN | Verifica en R2 que la foto llegó; desde ahí cuenta |
 | `PATCH /informes/:id/evidencias/:evidenciaId` | Autor o ADMIN | Cambia el comentario |
-| `DELETE /informes/:id/evidencias/:evidenciaId` | Autor o ADMIN | Quita la foto del informe (se oculta; el archivo se conserva) |
+| `DELETE /informes/:id/evidencias/:evidenciaId` | Autor o ADMIN | Descarta la foto (se oculta; el archivo se conserva). ADMIN puede hacerlo también con la ejecución finalizada |
+| `POST /informes/:id/evidencias/:evidenciaId/restaurar` | ADMIN | Devuelve al informe una foto descartada |
 | `GET /informes/:id/evidencias/:evidenciaId/descarga` | Quien ve el informe | Enlace para descargar la foto con su nombre original |
-| `GET /informes/:id/fotos.zip` | Quien ve el informe | Todas las fotos en un ZIP, en carpetas por actividad, etapa, EPP y generales |
+| `GET /informes/:id/fotos.zip` | Quien ve el informe | Todas las fotos en un ZIP con carpetas y números de secuencia (las descartadas no salen) |
 | `GET /health` | Pública | Estado del servidor y de la base |
 
 ### Órdenes de compra
@@ -123,23 +125,31 @@ Todas bajo `/api`. Las de consulta piden sesión; las de escritura, el rol indic
 - Si no se indica la posición, se numera de 10 en 10 después de la mayor (10, 20, 30…).
 - El monto de cada ítem y el subtotal se calculan, no se guardan; el subtotal no incluye impuestos.
 
-### Informes
+### Proceso de campo
 
-- Un informe reúne las actividades (ítems) de **una orden en un sitio**; es lo que el técnico abre en campo y lo que luego se envía a revisión.
-- Estados: `EN_EJECUCION` → `ENVIADO` → `APROBADO`, o `OBSERVADO` si hay correcciones. Solo se edita en `EN_EJECUCION` u `OBSERVADO`.
-- Un técnico que no está asignado recibe 404: no puede saber qué otros informes existen.
-- `GET /informes/:id` trae las actividades con sus fotos por etapa, las fotos de EPP y generales, el `progreso` (`completo`, `porcentaje`, `faltantes`) y el `historial`.
-- Para enviar se exige: al menos un técnico, la ubicación, una foto general, **una foto de EPP de cada técnico asignado** y una foto por cada etapa de cada actividad.
-- Al observar, el informe vuelve a ser editable; al aprobar, queda cerrado.
+Contrata es la herramienta donde los **técnicos suben las fotos**. La aprobación la hace el cliente en su propio sistema (Sytex): aquí no se aprueba ni se rechaza. Samira (ADMIN) prepara la orden, asigna técnicos, revisa las fotos y descarga.
+
+1. **Estado del sitio (al llegar a la estación):** 2 fotos `PANORAMICA` de la torre completa y 2 `ESTACION` de las estaciones y equipos.
+2. **Ubicación:** coordenadas por GPS o con un link de Google Maps (también links cortos `maps.app.goo.gl`).
+3. **EPP:** 2 fotos `EPP` (el técnico que aparece en la foto es opcional).
+4. **Ejecución:** fotos de cada ítem de la orden en sus etapas `ANTES`, `DURANTE` y `FINALIZADO`. No hay tope: cuantas más fotos, mejor.
+5. **Ítems nuevos:** Samira puede agregar ítems (`POST /informes/:id/actividades`) mientras la ejecución esté abierta; a los técnicos les aparecen al instante.
+6. **Finalizar:** el técnico da por terminada la ejecución cuando el informe está completo. Samira puede reabrirla.
+7. **Revisión interna:** Samira descarta las fotos que sobran (se ocultan, no se borran, y se pueden restaurar) y descarga el ZIP en orden.
+
+- Un informe es **una orden en un sitio**. Estados: `EN_EJECUCION` y `FINALIZADO`; solo se cargan fotos en `EN_EJECUCION`.
+- Un técnico que no está asignado recibe 404 y nunca ve precios.
+- `GET /informes/:id` trae las actividades con sus fotos por etapa, `panoramicas`, `estaciones`, `epp`, `descartadas` (solo ADMIN y SUPERVISOR), el `progreso` (`completo`, `porcentaje`, `faltantes`) y el `historial`.
+- El ZIP lleva números para que, ordenado por nombre, quede en secuencia: `1 Estado del sitio/…`, `2 EPP/…`, `3 Ejecución/010 <ítem>/1 Antes/001.jpg`.
 
 ### Fotos
 
-1. `POST /informes/:id/evidencias` con `tipo` (`ACTIVIDAD` con `itemId` y `etapa`, `EPP` con `tecnicoId`, o `GENERAL`), `nombreArchivo`, `tipoContenido` (JPG, PNG, WEBP o HEIC), `bytes` (máx. 25 MB) y opcionalmente `comentario` y `tomadaEn`.
+1. `POST /informes/:id/evidencias` con `tipo` (`PANORAMICA`, `ESTACION`, `EPP`, o `ACTIVIDAD` con `itemId` y `etapa`), `nombreArchivo`, `tipoContenido` (JPG, PNG, WEBP o HEIC), `bytes` (máx. 25 MB) y opcionalmente `comentario` y `tomadaEn`.
 2. El celular hace `PUT` del archivo a `subida.url` con el `Content-Type` indicado (el enlace dura 15 min).
-3. `POST …/confirmar`: la API verifica en R2 que el archivo llegó. Sin confirmar, la foto no aparece ni cuenta.
+3. `POST …/confirmar`: la API verifica que el archivo llegó. Sin confirmar, la foto no aparece ni cuenta.
 
-Las fotos nunca se borran: quitar una solo la oculta. Una actividad con fotos no se puede quitar de la orden ni cambiar de sitio.
-Las pruebas e2e usan un R2 simulado en memoria: no necesitan credenciales.
+Las fotos nunca se borran. Una actividad con fotos no se puede quitar de la orden ni cambiar de sitio.
+Las pruebas e2e usan un almacén simulado en memoria: no necesitan credenciales.
 
 ## Fotos en Cloudflare R2
 

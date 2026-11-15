@@ -22,8 +22,10 @@ import {
   crearInformeSchema,
   type FiltrosInformeDto,
   filtrosInformeSchema,
-  type RevisarInformeDto,
-  revisarInformeSchema,
+  type ReabrirInformeDto,
+  reabrirInformeSchema,
+  type AgregarActividadDto,
+  agregarActividadSchema,
   type UbicacionDto,
   ubicacionSchema,
 } from './dto/informe.schema.js';
@@ -31,8 +33,8 @@ import { InformesService } from './informes.service.js';
 
 /**
  * Consultar: todos los roles (un TECNICO solo ve los informes que tiene asignados, sin precios).
- * Abrir informes y asignar técnicos: ADMIN. Registrar la ubicación y enviar: ADMIN o el técnico asignado.
- * Revisar (aprobar u observar): ADMIN y SUPERVISOR.
+ * Abrir informes y asignar técnicos: ADMIN. Registrar la ubicación: ADMIN o el técnico asignado.
+ * Finalizar la ejecución: ADMIN o el técnico asignado. Reabrir y agregar ítems: ADMIN.
  */
 @Controller('informes')
 export class InformesController {
@@ -83,25 +85,37 @@ export class InformesController {
     return this.informes.registrarUbicacion(id, dto, usuario);
   }
 
-  /** Envía a revisión. 409 con `detalles` si falta algo. */
+  /** Da por terminada la ejecución. 409 con `detalles` si falta algo. */
   @Roles(Rol.ADMIN, Rol.TECNICO)
-  @Post(':id/enviar')
+  @Post(':id/finalizar')
   @HttpCode(HttpStatus.OK)
-  enviar(
+  finalizar(
     @Param('id', { schema: idSchema }) id: string,
     @CurrentUser() usuario: UsuarioAutenticado,
   ) {
-    return this.informes.enviar(id, usuario);
+    return this.informes.finalizar(id, usuario);
   }
 
-  @Roles(Rol.ADMIN, Rol.SUPERVISOR)
-  @Post(':id/revision')
+  /** Vuelve a abrir la ejecución (para seguir cargando fotos o ítems). */
+  @Roles(Rol.ADMIN)
+  @Post(':id/reabrir')
   @HttpCode(HttpStatus.OK)
-  revisar(
+  reabrir(
     @Param('id', { schema: idSchema }) id: string,
-    @Body({ schema: revisarInformeSchema }) dto: RevisarInformeDto,
+    @Body({ schema: reabrirInformeSchema }) dto: ReabrirInformeDto,
     @CurrentUser() usuario: UsuarioAutenticado,
   ) {
-    return this.informes.revisar(id, dto, usuario);
+    return this.informes.reabrir(id, dto, usuario);
+  }
+
+  /** Agrega un ítem en el sitio del informe; los técnicos lo ven al instante. */
+  @Roles(Rol.ADMIN)
+  @Post(':id/actividades')
+  agregarActividad(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: agregarActividadSchema }) dto: AgregarActividadDto,
+    @CurrentUser() usuario: UsuarioAutenticado,
+  ) {
+    return this.informes.agregarActividad(id, dto, usuario);
   }
 }

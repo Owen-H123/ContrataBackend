@@ -3,12 +3,11 @@ import { TipoEvidencia } from '../evidencias/entities/evidencia.entity.js';
 import { calcularProgreso, type RequisitosInforme } from './completitud.js';
 
 const juan = { id: 't1', nombre: 'Juan' };
-const pedro = { id: 't2', nombre: 'Pedro' };
 const grillete = {
   id: 'i1',
   posicion: 10,
   descripcion: 'CAMBIO DE GRILLETE',
-  etapas: [EtapaEvidencia.ANTES, EtapaEvidencia.DESPUES],
+  etapas: [EtapaEvidencia.ANTES, EtapaEvidencia.FINALIZADO],
 };
 const transporte = {
   id: 'i2',
@@ -20,23 +19,24 @@ const transporte = {
 const foto = (
   tipo: TipoEvidencia,
   extra: Partial<RequisitosInforme['evidencias'][number]> = {},
-) => ({ tipo, itemId: null, etapa: null, tecnicoId: null, ...extra });
+) => ({ tipo, itemId: null, etapa: null, ...extra });
+const veces = <T>(n: number, f: () => T) => Array.from({ length: n }, f);
 
 const completo: RequisitosInforme = {
-  tecnicos: [juan, pedro],
+  tecnicos: [juan],
   tieneUbicacion: true,
   actividades: [grillete, transporte],
   evidencias: [
-    foto(TipoEvidencia.GENERAL),
-    foto(TipoEvidencia.EPP, { tecnicoId: 't1' }),
-    foto(TipoEvidencia.EPP, { tecnicoId: 't2' }),
+    ...veces(2, () => foto(TipoEvidencia.PANORAMICA)),
+    ...veces(2, () => foto(TipoEvidencia.ESTACION)),
+    ...veces(2, () => foto(TipoEvidencia.EPP)),
     foto(TipoEvidencia.ACTIVIDAD, {
       itemId: 'i1',
       etapa: EtapaEvidencia.ANTES,
     }),
     foto(TipoEvidencia.ACTIVIDAD, {
       itemId: 'i1',
-      etapa: EtapaEvidencia.DESPUES,
+      etapa: EtapaEvidencia.FINALIZADO,
     }),
   ],
 };
@@ -62,19 +62,41 @@ describe('calcularProgreso', () => {
     expect(p.faltantes).toEqual([
       'Asigna al menos un técnico',
       'Falta registrar la ubicación del sitio',
-      'Faltan fotos generales del sitio',
-      'Falta la foto de EPP de los técnicos',
+      'Faltan 2 fotos panorámicas de la torre completa',
+      'Faltan 2 fotos de las estaciones y equipos',
+      'Faltan 2 fotos de EPP',
       'Actividad 10 (CAMBIO DE GRILLETE): falta la foto de antes',
-      'Actividad 10 (CAMBIO DE GRILLETE): falta la foto de después',
+      'Actividad 10 (CAMBIO DE GRILLETE): falta la foto de finalizado',
     ]);
   });
 
-  it('exige el EPP de cada técnico asignado', () => {
+  it('una foto que falta se dice en singular', () => {
     const p = calcularProgreso({
       ...completo,
-      evidencias: completo.evidencias.filter((e) => e.tecnicoId !== 't2'),
+      evidencias: completo.evidencias.filter(
+        (e, i) => !(e.tipo === TipoEvidencia.EPP && i === 5),
+      ),
     });
-    expect(p.faltantes).toEqual(['Falta la foto de EPP de Pedro']);
+    expect(p.faltantes).toEqual(['Falta 1 foto de EPP']);
+  });
+
+  it('el EPP son 2 fotos en total, sin importar cuántos técnicos haya', () => {
+    const dos = {
+      ...completo,
+      tecnicos: [juan, { id: 't2', nombre: 'Pedro' }],
+    };
+    expect(calcularProgreso(dos).completo).toBe(true);
+  });
+
+  it('subir más fotos de las mínimas no estorba', () => {
+    const p = calcularProgreso({
+      ...completo,
+      evidencias: [
+        ...completo.evidencias,
+        ...veces(5, () => foto(TipoEvidencia.PANORAMICA)),
+      ],
+    });
+    expect(p.completo).toBe(true);
   });
 
   it('una actividad sin etapas no pide fotos', () => {
@@ -86,12 +108,11 @@ describe('calcularProgreso', () => {
     const p = calcularProgreso({
       ...completo,
       evidencias: completo.evidencias.filter(
-        (e) => e.etapa !== EtapaEvidencia.DESPUES,
+        (e) => e.etapa !== EtapaEvidencia.FINALIZADO,
       ),
     });
     expect(p.faltantes).toEqual([
-      'Actividad 10 (CAMBIO DE GRILLETE): falta la foto de después',
+      'Actividad 10 (CAMBIO DE GRILLETE): falta la foto de finalizado',
     ]);
-    expect(p.porcentaje).toBe(85);
   });
 });

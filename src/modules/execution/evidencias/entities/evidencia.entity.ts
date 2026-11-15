@@ -6,12 +6,14 @@ import { ItemOrden } from '../../../planning/ordenes-compra/entities/item-orden.
 import { Informe } from '../../informes/entities/informe.entity.js';
 
 export enum TipoEvidencia {
-  /** Foto de una actividad en una etapa (antes, proceso o después). */
+  /** Foto de un trabajo (ítem de la orden) en una etapa: antes, durante o finalizado. */
   ACTIVIDAD = 'ACTIVIDAD',
-  /** Foto de un técnico con su equipo de protección personal. Obligatoria. */
+  /** Foto del personal con su equipo de protección personal. Obligatoria. */
   EPP = 'EPP',
-  /** Foto general del sitio. */
-  GENERAL = 'GENERAL',
+  /** Foto panorámica de la torre completa, al llegar a la estación. */
+  PANORAMICA = 'PANORAMICA',
+  /** Foto de las estaciones y equipos, al llegar a la estación. */
+  ESTACION = 'ESTACION',
 }
 
 /**
@@ -46,7 +48,7 @@ export class Evidencia extends EntidadBase {
   @Column({ type: 'enum', enum: EtapaEvidencia, nullable: true })
   etapa: EtapaEvidencia | null;
 
-  /** Técnico que aparece en la foto (solo tipo EPP). */
+  /** Técnico que aparece en la foto (solo tipo EPP, opcional). */
   @Column({ name: 'tecnico_id', type: 'uuid', nullable: true })
   tecnicoId: string | null;
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { crearItemSchema } from '../../../planning/ordenes-compra/dto/orden-compra.schema.js';
 import { EstadoInforme } from '../entities/informe.entity.js';
 
 const tecnicoIds = z
@@ -16,10 +17,14 @@ export type CrearInformeDto = z.infer<typeof crearInformeSchema>;
 export const asignarTecnicosSchema = z.object({ tecnicoIds });
 export type AsignarTecnicosDto = z.infer<typeof asignarTecnicosSchema>;
 
-export const ubicacionSchema = z.object({
-  latitud: z.number().min(-90).max(90),
-  longitud: z.number().min(-180).max(180),
-});
+/** La ubicación llega como coordenadas (GPS del celular) o como link de Google Maps. */
+export const ubicacionSchema = z.union([
+  z.object({
+    latitud: z.number().min(-90).max(90),
+    longitud: z.number().min(-180).max(180),
+  }),
+  z.object({ enlace: z.string().trim().min(3).max(500) }),
+]);
 export type UbicacionDto = z.infer<typeof ubicacionSchema>;
 
 /** Filtros de `GET /informes`. Un técnico solo ve los suyos, filtre lo que filtre. */
@@ -33,14 +38,15 @@ export const filtrosInformeSchema = z.object({
 });
 export type FiltrosInformeDto = z.infer<typeof filtrosInformeSchema>;
 
-/** Al observar hay que decir qué corregir; al aprobar, el comentario es opcional. */
-export const revisarInformeSchema = z
-  .object({
-    decision: z.enum(['APROBAR', 'OBSERVAR']),
-    comentario: z.string().trim().min(1).max(1000).optional(),
-  })
-  .refine((r) => r.decision === 'APROBAR' || r.comentario, {
-    message: 'Escribe qué hay que corregir',
-    path: ['comentario'],
-  });
-export type RevisarInformeDto = z.infer<typeof revisarInformeSchema>;
+/** Al reabrir se puede indicar qué falta. */
+export const reabrirInformeSchema = z.object({
+  comentario: z.string().trim().min(1).max(1000).optional(),
+});
+export type ReabrirInformeDto = z.infer<typeof reabrirInformeSchema>;
+
+/**
+ * Un ítem nuevo para este informe: la orden y el sitio son los del informe,
+ * así que no se indican. Lleva los mismos campos que una línea de la orden.
+ */
+export const agregarActividadSchema = crearItemSchema.omit({ sitioId: true });
+export type AgregarActividadDto = z.infer<typeof agregarActividadSchema>;
