@@ -30,4 +30,3 @@ export const actualizarUsuarioSchema = z
   .partial();
 export type ActualizarUsuarioDto = z.infer<typeof actualizarUsuarioSchema>;
 
-export const idSchema = z.uuid();

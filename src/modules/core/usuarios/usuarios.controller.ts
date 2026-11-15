@@ -1,12 +1,12 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
 import { Roles } from '../../../core/decorators/roles.decorator.js';
 import { Rol } from '../../../shared/enums/rol.enum.js';
+import { idSchema } from '../../../shared/validation/id.schema.js';
 import {
   type ActualizarUsuarioDto,
   actualizarUsuarioSchema,
   type CrearUsuarioDto,
   crearUsuarioSchema,
-  idSchema,
 } from './dto/usuario.schema.js';
 import { UsuariosService } from './usuarios.service.js';
 

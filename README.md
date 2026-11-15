@@ -48,15 +48,19 @@ src/
 │   ├── filters/          Formato único de errores
 │   └── guards/           Sesión (JWT) y permisos por rol
 ├── modules/              Negocio, agrupado por dominio
-│   └── core/
-│       ├── usuarios/     Gestión de usuarios (solo ADMIN)
-│       └── health/
+│   ├── core/
+│   │   ├── usuarios/     Gestión de usuarios (solo ADMIN)
+│   │   └── health/
+│   └── master/           Datos maestros
+│       ├── clientes/     Empresas que emiten las órdenes de compra
+│       └── sitios/       Torres o estaciones (código PE-…, nombre, ubicación)
 └── shared/               Piezas reutilizables
     ├── entities/         Columnas base: id y fechas
-    └── enums/            Roles
+    ├── enums/            Roles
+    └── validation/       Esquemas comunes (id)
 ```
 
-Dominios previstos: `modules/master` (clientes, sitios, catálogo de EPP), `modules/planning` (órdenes de compra e ítems), `modules/execution` (informes, evidencias, EPP, revisiones) y `services/storage` (fotos en Cloudflare R2).
+Dominios previstos: `modules/master` (catálogo de EPP), `modules/planning` (órdenes de compra e ítems), `modules/execution` (informes, evidencias, EPP, revisiones) y `services/storage` (fotos en Cloudflare R2).
 
 ### Cómo agregar un módulo
 
@@ -66,6 +70,22 @@ Cada módulo sigue la misma forma: `entities/`, `dto/` (esquemas Zod), `*.servic
 2. Agregar sus entidades a `src/core/database/entities.ts`.
 3. Importar el módulo en `app.module.ts`.
 4. Generar y aplicar la migración.
+
+## Rutas
+
+Todas bajo `/api`. Las de consulta piden sesión; las de escritura, el rol indicado.
+
+| Ruta | Rol | Qué hace |
+|---|---|---|
+| `POST /auth/login` | Pública | Inicia sesión y devuelve el token |
+| `GET /auth/me` | Sesión | Perfil del usuario actual |
+| `GET·POST /usuarios`, `PATCH /usuarios/:id` | ADMIN | Gestión de usuarios |
+| `GET /clientes`, `GET /clientes/:id` | Sesión | Consultar clientes |
+| `POST /clientes`, `PATCH /clientes/:id` | ADMIN | Crear y editar clientes (RUC único de 11 dígitos) |
+| `GET /sitios?clienteId=&q=&activo=` | Sesión | Buscar sitios por cliente, código o nombre |
+| `GET /sitios/:id` | Sesión | Detalle de un sitio con su cliente |
+| `POST /sitios`, `PATCH /sitios/:id` | ADMIN | Crear y editar sitios (código único, en mayúsculas) |
+| `GET /health` | Pública | Estado del servidor y de la base |
 
 ## Reglas de la base
 
