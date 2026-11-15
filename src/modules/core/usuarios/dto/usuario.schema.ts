@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Rol } from '../../../common/enums/rol.enum.js';
+import { Rol } from '../../../../shared/enums/rol.enum.js';
 
 const nombre = z.string().trim().min(2).max(120);
 const usuario = z

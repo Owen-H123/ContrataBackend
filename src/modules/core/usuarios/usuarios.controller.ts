@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
-import { Roles } from '../../common/decorators/roles.decorator.js';
-import { Rol } from '../../common/enums/rol.enum.js';
+import { Roles } from '../../../core/decorators/roles.decorator.js';
+import { Rol } from '../../../shared/enums/rol.enum.js';
 import {
   type ActualizarUsuarioDto,
   actualizarUsuarioSchema,

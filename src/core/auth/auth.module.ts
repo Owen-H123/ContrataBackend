@@ -1,8 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
-import type { Env } from '../../config/env.schema.js';
-import { UsuariosModule } from '../usuarios/usuarios.module.js';
+import type { Env } from '../config/env.schema.js';
+import { UsuariosModule } from '../../modules/core/usuarios/usuarios.module.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 

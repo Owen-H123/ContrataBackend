@@ -1,14 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD } from '@nestjs/core';
-import { AllExceptionsFilter } from './common/filters/all-exceptions.filter.js';
-import { JwtAuthGuard } from './common/guards/jwt-auth.guard.js';
-import { RolesGuard } from './common/guards/roles.guard.js';
-import { envSchema } from './config/env.schema.js';
-import { DatabaseModule } from './database/database.module.js';
-import { AuthModule } from './modules/auth/auth.module.js';
-import { HealthModule } from './modules/health/health.module.js';
-import { UsuariosModule } from './modules/usuarios/usuarios.module.js';
+import { AllExceptionsFilter } from './core/filters/all-exceptions.filter.js';
+import { JwtAuthGuard } from './core/guards/jwt-auth.guard.js';
+import { RolesGuard } from './core/guards/roles.guard.js';
+import { envSchema } from './core/config/env.schema.js';
+import { DatabaseModule } from './core/database/database.module.js';
+import { AuthModule } from './core/auth/auth.module.js';
+import { HealthModule } from './modules/core/health/health.module.js';
+import { UsuariosModule } from './modules/core/usuarios/usuarios.module.js';
 
 @Module({
   imports: [

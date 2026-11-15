@@ -1,6 +1,6 @@
 import { type ExecutionContext, ForbiddenException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { Rol } from '../enums/rol.enum.js';
+import { Rol } from '../../shared/enums/rol.enum.js';
 import { RolesGuard } from './roles.guard.js';
 
 function contextoCon(rol?: Rol): ExecutionContext {

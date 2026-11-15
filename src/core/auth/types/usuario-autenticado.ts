@@ -1,5 +1,5 @@
 import type { Request } from 'express';
-import type { Rol } from '../enums/rol.enum.js';
+import type { Rol } from '../../../shared/enums/rol.enum.js';
 
 /** Contenido del token de acceso. */
 export interface JwtPayload {

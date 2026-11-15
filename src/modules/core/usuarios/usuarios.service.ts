@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import bcrypt from 'bcryptjs';
 import { Repository } from 'typeorm';
+import { Rol } from '../../../shared/enums/rol.enum.js';
 import type {
   ActualizarUsuarioDto,
   CrearUsuarioDto,
@@ -29,6 +30,11 @@ export class UsuariosService {
     const usuario = await this.usuarios.findOneBy({ id });
     if (!usuario) throw new NotFoundException('El usuario no existe');
     return usuario;
+  }
+
+  /** Usuario vigente para una sesión: null si no existe o está desactivado. */
+  buscarActivo(id: string): Promise<Usuario | null> {
+    return this.usuarios.findOneBy({ id, activo: true });
   }
 
   /** Único punto donde se lee el hash de la contraseña. */
@@ -57,11 +63,33 @@ export class UsuariosService {
 
   async actualizar(id: string, dto: ActualizarUsuarioDto): Promise<Usuario> {
     const usuario = await this.obtener(id);
+    await this.evitarQuedarSinAdmin(usuario, dto);
     const { password, ...cambios } = dto;
     Object.assign(usuario, cambios);
     if (password)
       usuario.passwordHash = await bcrypt.hash(password, RONDAS_HASH);
     await this.usuarios.save(usuario);
     return this.obtener(id);
+  }
+
+  /** Impide desactivar o quitarle el rol al último administrador activo. */
+  private async evitarQuedarSinAdmin(
+    usuario: Usuario,
+    dto: ActualizarUsuarioDto,
+  ): Promise<void> {
+    const eraAdminActivo = usuario.rol === Rol.ADMIN && usuario.activo;
+    const dejaDeSerlo =
+      (dto.rol !== undefined && dto.rol !== Rol.ADMIN) || dto.activo === false;
+    if (!eraAdminActivo || !dejaDeSerlo) return;
+
+    const adminsActivos = await this.usuarios.countBy({
+      rol: Rol.ADMIN,
+      activo: true,
+    });
+    if (adminsActivos <= 1) {
+      throw new ConflictException(
+        'Debe quedar al menos un administrador activo',
+      );
+    }
   }
 }

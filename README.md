@@ -34,31 +34,36 @@ La API queda en `http://localhost:3000/api`. `GET /api/health` confirma que el s
 
 ## Estructura
 
+Organizada igual que `c4-backend-mvp`:
+
 ```
 src/
 ├── main.ts               Arranque: seguridad, CORS, prefijo /api, validación
 ├── app.module.ts         Une los módulos y registra guards y filtro globales
-├── config/               Variables de entorno validadas al arrancar
-├── database/             Conexión, lista de entidades, migraciones y datos iniciales
-├── common/               Piezas compartidas por todos los módulos
+├── core/                 Infraestructura transversal
+│   ├── auth/             Inicio de sesión, perfil y tipos de la sesión
+│   ├── config/           Variables de entorno validadas al arrancar
+│   ├── database/         Conexión, lista de entidades, migraciones y datos iniciales
 │   ├── decorators/       @Public, @Roles, @CurrentUser
-│   ├── guards/           Sesión (JWT) y permisos por rol
 │   ├── filters/          Formato único de errores
-│   ├── entities/         Columnas base: id y fechas
-│   ├── enums/            Roles
-│   └── types/
-└── modules/              Un módulo por área del negocio
-    ├── auth/             Inicio de sesión y perfil
-    ├── usuarios/         Gestión de usuarios (solo ADMIN)
-    └── health/
+│   └── guards/           Sesión (JWT) y permisos por rol
+├── modules/              Negocio, agrupado por dominio
+│   └── core/
+│       ├── usuarios/     Gestión de usuarios (solo ADMIN)
+│       └── health/
+└── shared/               Piezas reutilizables
+    ├── entities/         Columnas base: id y fechas
+    └── enums/            Roles
 ```
+
+Dominios previstos: `modules/master` (clientes, sitios, catálogo de EPP), `modules/planning` (órdenes de compra e ítems), `modules/execution` (informes, evidencias, EPP, revisiones) y `services/storage` (fotos en Cloudflare R2).
 
 ### Cómo agregar un módulo
 
 Cada módulo sigue la misma forma: `entities/`, `dto/` (esquemas Zod), `*.service.ts` (reglas de negocio), `*.controller.ts` (rutas) y `*.module.ts`.
 
-1. Crear la carpeta en `src/modules/`.
-2. Agregar sus entidades a `src/database/entities.ts`.
+1. Crear la carpeta en `src/modules/<dominio>/`.
+2. Agregar sus entidades a `src/core/database/entities.ts`.
 3. Importar el módulo en `app.module.ts`.
 4. Generar y aplicar la migración.
 
@@ -70,6 +75,8 @@ Cada módulo sigue la misma forma: `entities/`, `dto/` (esquemas Zod), `*.servic
 - **Errores** con una sola forma: `{ statusCode, error, message, detalles?, path, timestamp }`.
 - **El esquema solo cambia con migraciones**; `synchronize` está apagado.
 - **La contraseña nunca sale en las respuestas**: `passwordHash` está excluido de las consultas.
+- **La sesión se revalida en cada petición**: si un usuario se desactiva o cambia de rol, rige de inmediato.
+- **Siempre queda un administrador activo**: no se puede desactivar ni quitar el rol al último.
 
 ## Comandos
 
@@ -77,7 +84,7 @@ Cada módulo sigue la misma forma: `entities/`, `dto/` (esquemas Zod), `*.servic
 |---|---|
 | `npm run start:dev` | Servidor con recarga automática |
 | `npm run build` | Compila a `dist/` |
-| `npm run migration:generate -- src/database/migrations/Nombre --esm` | Crea una migración a partir de los cambios en las entidades |
+| `npm run migration:generate -- src/core/database/migrations/Nombre --esm` | Crea una migración a partir de los cambios en las entidades |
 | `npm run migration:run` | Aplica las migraciones pendientes |
 | `npm run migration:revert` | Deshace la última migración |
 | `npm run seed` | Crea el primer administrador |

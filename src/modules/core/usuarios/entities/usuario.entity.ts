@@ -1,6 +1,6 @@
 import { Column, Entity } from 'typeorm';
-import { EntidadBase } from '../../../common/entities/base.entity.js';
-import { Rol } from '../../../common/enums/rol.enum.js';
+import { EntidadBase } from '../../../../shared/entities/base.entity.js';
+import { Rol } from '../../../../shared/enums/rol.enum.js';
 
 @Entity('usuarios')
 export class Usuario extends EntidadBase {

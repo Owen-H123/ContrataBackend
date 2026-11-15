@@ -6,18 +6,24 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
+import { UsuariosService } from '../../modules/core/usuarios/usuarios.service.js';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator.js';
 import type {
   JwtPayload,
   RequestConUsuario,
-} from '../types/usuario-autenticado.js';
+} from '../auth/types/usuario-autenticado.js';
 
-/** Exige un token válido en todas las rutas, salvo las marcadas con @Public(). */
+/**
+ * Exige un token válido en todas las rutas, salvo las marcadas con @Public().
+ * Además vuelve a leer al usuario en la base: si lo desactivaron o le cambiaron
+ * el rol, el cambio rige de inmediato y no recién cuando vence el token.
+ */
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly jwt: JwtService,
+    private readonly usuarios: UsuariosService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -33,16 +39,22 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Falta el token de acceso');
     }
 
+    let payload: JwtPayload;
     try {
-      const payload = await this.jwt.verifyAsync<JwtPayload>(token);
-      request.usuario = {
-        id: payload.sub,
-        nombre: payload.nombre,
-        rol: payload.rol,
-      };
+      payload = await this.jwt.verifyAsync<JwtPayload>(token);
     } catch {
       throw new UnauthorizedException('La sesión no es válida o ya venció');
     }
+
+    const usuario = await this.usuarios.buscarActivo(payload.sub);
+    if (!usuario) {
+      throw new UnauthorizedException('Tu usuario está desactivado');
+    }
+    request.usuario = {
+      id: usuario.id,
+      nombre: usuario.nombre,
+      rol: usuario.rol,
+    };
     return true;
   }
 }

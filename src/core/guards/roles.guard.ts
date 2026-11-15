@@ -6,8 +6,8 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { ROLES_KEY } from '../decorators/roles.decorator.js';
-import type { Rol } from '../enums/rol.enum.js';
-import type { RequestConUsuario } from '../types/usuario-autenticado.js';
+import type { Rol } from '../../shared/enums/rol.enum.js';
+import type { RequestConUsuario } from '../auth/types/usuario-autenticado.js';
 
 /** Aplica @Roles(): rechaza al usuario cuyo rol no está en la lista de la ruta. */
 @Injectable()

@@ -2,7 +2,7 @@ import { createParamDecorator, type ExecutionContext } from '@nestjs/common';
 import type {
   RequestConUsuario,
   UsuarioAutenticado,
-} from '../types/usuario-autenticado.js';
+} from '../auth/types/usuario-autenticado.js';
 
 /** Entrega al controlador el usuario que hace la petición. */
 export const CurrentUser = createParamDecorator(

@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
-import { Rol } from '../../common/enums/rol.enum.js';
-import { Usuario } from '../../modules/usuarios/entities/usuario.entity.js';
+import { Rol } from '../../../shared/enums/rol.enum.js';
+import { Usuario } from '../../../modules/core/usuarios/entities/usuario.entity.js';
 import dataSource from '../data-source.js';
 
 /**

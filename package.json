@@ -19,11 +19,11 @@
     "test:cov": "vitest run --coverage",
     "test:debug": "vitest --inspect-brk --no-file-parallelism",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
-    "typeorm": "nest build && typeorm -d dist/database/data-source.js",
-    "migration:generate": "nest build && typeorm migration:generate -d dist/database/data-source.js",
-    "migration:run": "nest build && typeorm migration:run -d dist/database/data-source.js",
-    "migration:revert": "nest build && typeorm migration:revert -d dist/database/data-source.js",
-    "seed": "nest build && node dist/database/seeds/seed.js"
+    "typeorm": "nest build && typeorm -d dist/core/database/data-source.js",
+    "migration:generate": "nest build && typeorm migration:generate -d dist/core/database/data-source.js",
+    "migration:run": "nest build && typeorm migration:run -d dist/core/database/data-source.js",
+    "migration:revert": "nest build && typeorm migration:revert -d dist/core/database/data-source.js",
+    "seed": "nest build && node dist/core/database/seeds/seed.js"
   },
   "dependencies": {
     "@nestjs/common": "^12.0.1",

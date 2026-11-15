@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import helmet from 'helmet';
 import { AppModule } from './app.module.js';
-import type { Env } from './config/env.schema.js';
+import type { Env } from './core/config/env.schema.js';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);

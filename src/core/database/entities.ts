@@ -1,4 +1,4 @@
-import { Usuario } from '../modules/usuarios/entities/usuario.entity.js';
+import { Usuario } from '../../modules/core/usuarios/entities/usuario.entity.js';
 
 /**
  * Lista única de entidades. La usan la aplicación y la línea de comandos de
