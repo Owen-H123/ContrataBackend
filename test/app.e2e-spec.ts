@@ -469,4 +469,229 @@ describe('API (e2e)', () => {
       await api().get('/api/ordenes-compra').set(auth(token)).expect(403);
     });
   });
+
+  describe('informes', () => {
+    let ordenId: string;
+    let sitioA: string;
+    let sitioB: string;
+    let sitioSinItems: string;
+    let tec1: { id: string; token: string };
+    let tec2: { id: string; token: string };
+    let informeId: string;
+
+    async function crearTecnico(nombre: string) {
+      const usuario = `${nombre}${sufijo}`;
+      const res = await api()
+        .post('/api/usuarios')
+        .set(auth(adminToken))
+        .send({ nombre, usuario, password: 'clave-segura-123', rol: 'TECNICO' })
+        .expect(201);
+      return {
+        id: res.body.id as string,
+        token: await login(usuario, 'clave-segura-123'),
+      };
+    }
+
+    async function crearSitio(clienteId: string, codigo: string) {
+      const res = await api()
+        .post('/api/sitios')
+        .set(auth(adminToken))
+        .send({ codigo, nombre: codigo, clienteId })
+        .expect(201);
+      return res.body.id as string;
+    }
+
+    beforeAll(async () => {
+      const cliente = await api()
+        .post('/api/clientes')
+        .set(auth(adminToken))
+        .send({
+          razonSocial: 'Cliente informes',
+          ruc: `23${sufijo}000`.padEnd(11, '3'),
+        })
+        .expect(201);
+      const clienteId = cliente.body.id as string;
+      sitioA = await crearSitio(clienteId, `PE-IA-${sufijo}`);
+      sitioB = await crearSitio(clienteId, `PE-IB-${sufijo}`);
+      sitioSinItems = await crearSitio(clienteId, `PE-IC-${sufijo}`);
+
+      const item = (
+        sitioId: string,
+        descripcion: string,
+        etapas?: string[],
+      ) => ({
+        sitioId,
+        descripcion,
+        cantidad: 2,
+        unidad: 'UND',
+        precioUnitario: 50,
+        ...(etapas ? { etapas } : {}),
+      });
+      const orden = await api()
+        .post('/api/ordenes-compra')
+        .set(auth(adminToken))
+        .send({
+          numero: `IN-${sufijo}`,
+          clienteId,
+          fechaEmision: '2026-11-10',
+          items: [
+            item(sitioA, 'CAMBIO DE GRILLETE'),
+            item(sitioA, 'TRANSPORTE', []),
+            item(sitioB, 'LIMPIEZA FINAL'),
+          ],
+        })
+        .expect(201);
+      ordenId = orden.body.id as string;
+
+      tec1 = await crearTecnico('juan');
+      tec2 = await crearTecnico('pedro');
+    });
+
+    it('el administrador abre el informe de un sitio con sus técnicos', async () => {
+      const res = await api()
+        .post('/api/informes')
+        .set(auth(adminToken))
+        .send({ ordenId, sitioId: sitioA, tecnicoIds: [tec1.id] })
+        .expect(201);
+      informeId = res.body.id as string;
+      expect(res.body).toMatchObject({
+        estado: 'EN_EJECUCION',
+        orden: { id: ordenId, numero: `IN-${sufijo}` },
+        sitio: { id: sitioA },
+        tecnicos: [{ id: tec1.id }],
+        ubicacion: null,
+      });
+      expect(res.body.actividades).toHaveLength(2);
+      expect(res.body.actividades[0]).toMatchObject({
+        descripcion: 'CAMBIO DE GRILLETE',
+        etapas: ['ANTES', 'PROCESO', 'DESPUES'],
+        precioUnitario: 50,
+        monto: 100,
+      });
+      expect(res.body.actividades[1].etapas).toEqual([]);
+    });
+
+    it('rechaza informes repetidos, sitios sin actividades y usuarios que no son técnicos', async () => {
+      const crear = (body: object) =>
+        api().post('/api/informes').set(auth(adminToken)).send(body);
+      await crear({ ordenId, sitioId: sitioA }).expect(409);
+      await crear({ ordenId, sitioId: sitioSinItems }).expect(409);
+
+      const yo = await api()
+        .get('/api/auth/me')
+        .set(auth(adminToken))
+        .expect(200);
+      await crear({
+        ordenId,
+        sitioId: sitioB,
+        tecnicoIds: [yo.body.id],
+      }).expect(409);
+      await crear({ ordenId, sitioId: sitioB }).expect(201);
+    });
+
+    it('un técnico solo ve los informes que tiene asignados', async () => {
+      const lista1 = await api()
+        .get('/api/informes')
+        .set(auth(tec1.token))
+        .expect(200);
+      expect(lista1.body).toHaveLength(1);
+      expect(lista1.body[0]).toMatchObject({
+        id: informeId,
+        cantidadActividades: 2,
+      });
+
+      const lista2 = await api()
+        .get('/api/informes')
+        .set(auth(tec2.token))
+        .expect(200);
+      expect(lista2.body).toHaveLength(0);
+      await api()
+        .get(`/api/informes/${informeId}`)
+        .set(auth(tec2.token))
+        .expect(404);
+    });
+
+    it('el técnico ve sus actividades sin precios', async () => {
+      const res = await api()
+        .get(`/api/informes/${informeId}`)
+        .set(auth(tec1.token))
+        .expect(200);
+      expect(res.body.actividades).toHaveLength(2);
+      expect(res.body.actividades[0]).not.toHaveProperty('precioUnitario');
+      expect(res.body.actividades[0]).not.toHaveProperty('monto');
+    });
+
+    it('el técnico asignado registra la ubicación tomada en campo', async () => {
+      const res = await api()
+        .patch(`/api/informes/${informeId}/ubicacion`)
+        .set(auth(tec1.token))
+        .send({ latitud: -9.090194444, longitud: -78.55880556 })
+        .expect(200);
+      expect(res.body.ubicacion).toEqual({
+        latitud: -9.090194444,
+        longitud: -78.55880556,
+      });
+
+      await api()
+        .patch(`/api/informes/${informeId}/ubicacion`)
+        .set(auth(tec2.token))
+        .send({ latitud: 0, longitud: 0 })
+        .expect(404);
+      await api()
+        .patch(`/api/informes/${informeId}/ubicacion`)
+        .set(auth(tec1.token))
+        .send({ latitud: 100, longitud: 0 })
+        .expect(400);
+    });
+
+    it('un técnico no abre informes ni reasigna técnicos', async () => {
+      await api()
+        .post('/api/informes')
+        .set(auth(tec1.token))
+        .send({ ordenId, sitioId: sitioB })
+        .expect(403);
+      await api()
+        .put(`/api/informes/${informeId}/tecnicos`)
+        .set(auth(tec1.token))
+        .send({ tecnicoIds: [tec1.id] })
+        .expect(403);
+    });
+
+    it('al reasignar, el acceso cambia de técnico', async () => {
+      const res = await api()
+        .put(`/api/informes/${informeId}/tecnicos`)
+        .set(auth(adminToken))
+        .send({ tecnicoIds: [tec2.id] })
+        .expect(200);
+      expect(res.body.tecnicos).toEqual([
+        expect.objectContaining({ id: tec2.id }),
+      ]);
+      await api()
+        .get(`/api/informes/${informeId}`)
+        .set(auth(tec1.token))
+        .expect(404);
+      await api()
+        .get(`/api/informes/${informeId}`)
+        .set(auth(tec2.token))
+        .expect(200);
+    });
+
+    it('el administrador filtra por orden, sitio y texto', async () => {
+      const porOrden = await api()
+        .get('/api/informes')
+        .query({ ordenId })
+        .set(auth(adminToken))
+        .expect(200);
+      expect(porOrden.body).toHaveLength(2);
+
+      const porTexto = await api()
+        .get('/api/informes')
+        .query({ q: `pe-ia-${sufijo}` })
+        .set(auth(adminToken))
+        .expect(200);
+      expect(porTexto.body.map((i: { id: string }) => i.id)).toEqual([
+        informeId,
+      ]);
+    });
+  });
 });

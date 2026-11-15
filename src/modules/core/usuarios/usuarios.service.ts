@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import bcrypt from 'bcryptjs';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Rol } from '../../../shared/enums/rol.enum.js';
 import type {
   ActualizarUsuarioDto,
@@ -35,6 +35,23 @@ export class UsuariosService {
   /** Usuario vigente para una sesión: null si no existe o está desactivado. */
   buscarActivo(id: string): Promise<Usuario | null> {
     return this.usuarios.findOneBy({ id, activo: true });
+  }
+
+  /** Devuelve los técnicos indicados; falla si alguno no existe, no es TECNICO o está inactivo. */
+  async exigirTecnicosActivos(ids: string[]): Promise<Usuario[]> {
+    const unicos = [...new Set(ids)];
+    if (unicos.length === 0) return [];
+    const encontrados = await this.usuarios.findBy({ id: In(unicos) });
+    if (encontrados.length !== unicos.length) {
+      throw new NotFoundException('Uno de los técnicos no existe');
+    }
+    const invalido = encontrados.find(
+      (u) => u.rol !== Rol.TECNICO || !u.activo,
+    );
+    if (invalido) {
+      throw new ConflictException(`${invalido.nombre} no es un técnico activo`);
+    }
+    return encontrados;
   }
 
   /** Único punto donde se lee el hash de la contraseña. */

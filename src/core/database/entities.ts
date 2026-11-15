@@ -3,9 +3,17 @@ import { Cliente } from '../../modules/master/clientes/entities/cliente.entity.j
 import { Sitio } from '../../modules/master/sitios/entities/sitio.entity.js';
 import { ItemOrden } from '../../modules/planning/ordenes-compra/entities/item-orden.entity.js';
 import { OrdenCompra } from '../../modules/planning/ordenes-compra/entities/orden-compra.entity.js';
+import { Informe } from '../../modules/execution/informes/entities/informe.entity.js';
 
 /**
  * Lista única de entidades. La usan la aplicación y la línea de comandos de
  * migraciones, así ambas ven siempre el mismo modelo. Cada entidad nueva se agrega aquí.
  */
-export const entities = [Usuario, Cliente, Sitio, OrdenCompra, ItemOrden];
+export const entities = [
+  Usuario,
+  Cliente,
+  Sitio,
+  OrdenCompra,
+  ItemOrden,
+  Informe,
+];

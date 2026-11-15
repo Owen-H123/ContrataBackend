@@ -54,8 +54,12 @@ src/
 │   ├── master/           Datos maestros
 │       ├── clientes/     Empresas que emiten las órdenes de compra
 │       └── sitios/       Torres o estaciones (código PE-…, nombre, ubicación)
-│   └── planning/         Planificación
-│       └── ordenes-compra/  Órdenes de compra y sus ítems (las actividades)
+│   ├── planning/         Planificación
+│   │   └── ordenes-compra/  Órdenes de compra y sus ítems (las actividades)
+│   └── execution/        Ejecución en campo
+│       └── informes/     Informe por orden y sitio, técnicos asignados, ubicación
+├── services/             Integraciones externas
+│   └── storage/          Fotos en Cloudflare R2 (enlaces firmados)
 └── shared/               Piezas reutilizables
     ├── database/         Utilidades de consulta (escapar LIKE)
     ├── entities/         Columnas base, conversión de numeric y redondeo
@@ -63,7 +67,7 @@ src/
     └── validation/       Esquemas comunes (id)
 ```
 
-Dominios previstos: `modules/master` (catálogo de EPP), `modules/execution` (informes, evidencias, EPP, revisiones) y `services/storage` (fotos en Cloudflare R2).
+Pendiente: evidencias fotográficas y EPP en `modules/execution`, y el envío y la revisión de informes.
 
 ### Cómo agregar un módulo
 
@@ -94,6 +98,11 @@ Todas bajo `/api`. Las de consulta piden sesión; las de escritura, el rol indic
 | `PATCH /ordenes-compra/:id` | ADMIN | Edita la cabecera o cambia el estado (ABIERTA, CERRADA, ANULADA) |
 | `POST /ordenes-compra/:id/items` | ADMIN | Agrega un ítem (solo si la orden está ABIERTA) |
 | `PATCH·DELETE /ordenes-compra/:id/items/:itemId` | ADMIN | Edita o quita un ítem (solo si la orden está ABIERTA) |
+| `GET /informes?estado=&ordenId=&sitioId=&tecnicoId=&q=` | Sesión | Lista de informes; un TECNICO solo ve los suyos |
+| `GET /informes/:id` | Sesión | Informe con sus actividades; un TECNICO lo ve sin precios |
+| `POST /informes` | ADMIN | Abre el informe de una orden en un sitio y asigna técnicos |
+| `PUT /informes/:id/tecnicos` | ADMIN | Reemplaza los técnicos asignados |
+| `PATCH /informes/:id/ubicacion` | ADMIN, técnico asignado | Guarda la ubicación tomada en campo |
 | `GET /health` | Pública | Estado del servidor y de la base |
 
 ### Órdenes de compra
@@ -103,6 +112,36 @@ Todas bajo `/api`. Las de consulta piden sesión; las de escritura, el rol indic
 - `etapas` indica qué fotos exige el ítem: por omisión `["ANTES","PROCESO","DESPUES"]`; `[]` para líneas sin fotos, como el transporte.
 - Si no se indica la posición, se numera de 10 en 10 después de la mayor (10, 20, 30…).
 - El monto de cada ítem y el subtotal se calculan, no se guardan; el subtotal no incluye impuestos.
+
+### Informes
+
+- Un informe reúne las actividades (ítems) de **una orden en un sitio**; es lo que el técnico abre en campo y lo que luego se envía a revisión.
+- Estados: `EN_EJECUCION` → `ENVIADO` → `APROBADO`, o `OBSERVADO` si hay correcciones. Solo se edita en `EN_EJECUCION` u `OBSERVADO`.
+- Un técnico que no está asignado recibe 404: no puede saber qué otros informes existen.
+
+## Fotos en Cloudflare R2
+
+Las fotos van a un bucket privado de R2. La API no recibe los archivos: entrega enlaces firmados que duran 15 minutos (subir) o 60 minutos (ver o descargar), y el celular sube directo a R2.
+
+1. En el panel de Cloudflare, **R2 → Create bucket**, por ejemplo `contrata-fotos`. Déjalo privado.
+2. **R2 → Manage API tokens → Create API token**, con permiso **Object Read & Write** solo sobre ese bucket.
+3. Copia en `.env`: el **Account ID** (`R2_ACCOUNT_ID`), el **Access Key ID** (`R2_ACCESS_KEY_ID`), el **Secret Access Key** (`R2_SECRET_ACCESS_KEY`) y el nombre del bucket (`R2_BUCKET`). El secreto se muestra una sola vez.
+4. En el bucket, **Settings → CORS policy**, permite que el frontend suba y lea:
+
+   ```json
+   [
+     {
+       "AllowedOrigins": ["http://localhost:5173"],
+       "AllowedMethods": ["GET", "PUT", "HEAD"],
+       "AllowedHeaders": ["Content-Type"],
+       "MaxAgeSeconds": 3600
+     }
+   ]
+   ```
+
+   Agrega el dominio de producción a `AllowedOrigins` cuando exista.
+
+Sin estas variables la API arranca igual; las rutas de fotos responden 503 hasta que se configuren.
 
 ## Reglas de la base
 
