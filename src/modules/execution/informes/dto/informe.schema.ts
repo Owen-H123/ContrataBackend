@@ -32,3 +32,15 @@ export const filtrosInformeSchema = z.object({
   q: z.string().trim().min(1).max(60).optional(),
 });
 export type FiltrosInformeDto = z.infer<typeof filtrosInformeSchema>;
+
+/** Al observar hay que decir qué corregir; al aprobar, el comentario es opcional. */
+export const revisarInformeSchema = z
+  .object({
+    decision: z.enum(['APROBAR', 'OBSERVAR']),
+    comentario: z.string().trim().min(1).max(1000).optional(),
+  })
+  .refine((r) => r.decision === 'APROBAR' || r.comentario, {
+    message: 'Escribe qué hay que corregir',
+    path: ['comentario'],
+  });
+export type RevisarInformeDto = z.infer<typeof revisarInformeSchema>;

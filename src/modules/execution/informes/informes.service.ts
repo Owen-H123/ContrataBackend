@@ -4,20 +4,34 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, IsNull, Repository } from 'typeorm';
 import type { UsuarioAutenticado } from '../../../core/auth/types/usuario-autenticado.js';
 import { escaparLike } from '../../../shared/database/escapar-like.js';
 import { redondear2 } from '../../../shared/entities/numerico.transformer.js';
-import type { EtapaEvidencia } from '../../../shared/enums/etapa-evidencia.enum.js';
+import {
+  ETAPAS_EN_ORDEN,
+  type EtapaEvidencia,
+} from '../../../shared/enums/etapa-evidencia.enum.js';
 import { Rol } from '../../../shared/enums/rol.enum.js';
+import { StorageService } from '../../../services/storage/storage.service.js';
 import { UsuariosService } from '../../core/usuarios/usuarios.service.js';
 import { ItemOrden } from '../../planning/ordenes-compra/entities/item-orden.entity.js';
 import { EstadoOrden } from '../../planning/ordenes-compra/entities/orden-compra.entity.js';
 import { OrdenesCompraService } from '../../planning/ordenes-compra/ordenes-compra.service.js';
+import {
+  Evidencia,
+  TipoEvidencia,
+} from '../evidencias/entities/evidencia.entity.js';
+import {
+  type EvidenciaDto,
+  presentarEvidencia,
+} from '../evidencias/evidencia.presenter.js';
+import { calcularProgreso, type Progreso } from './completitud.js';
 import type {
   AsignarTecnicosDto,
   CrearInformeDto,
   FiltrosInformeDto,
+  RevisarInformeDto,
   UbicacionDto,
 } from './dto/informe.schema.js';
 import {
@@ -25,6 +39,10 @@ import {
   EstadoInforme,
   Informe,
 } from './entities/informe.entity.js';
+import {
+  AccionRevision,
+  RevisionInforme,
+} from './entities/revision-informe.entity.js';
 
 interface TecnicoDto {
   id: string;
@@ -43,6 +61,8 @@ export interface ActividadDto {
   unidad: string;
   fechaEntrega: string | null;
   etapas: EtapaEvidencia[];
+  /** Fotos por etapa; trae una lista (quizás vacía) por cada etapa exigida. */
+  evidencias: Partial<Record<EtapaEvidencia, EvidenciaDto[]>>;
   precioUnitario?: number;
   monto?: number;
 }
@@ -67,6 +87,13 @@ export interface InformeResumen extends CabeceraInforme {
   cantidadActividades: number;
 }
 
+export interface RevisionDto {
+  accion: AccionRevision;
+  comentario: string | null;
+  usuario: { id: string; nombre: string } | null;
+  fecha: Date;
+}
+
 export interface InformeDetalle extends CabeceraInforme {
   sitio: CabeceraInforme['sitio'] & {
     direccion: string | null;
@@ -76,6 +103,14 @@ export interface InformeDetalle extends CabeceraInforme {
   /** Ubicación tomada en campo. */
   ubicacion: { latitud: number; longitud: number } | null;
   actividades: ActividadDto[];
+  /** Fotos de los técnicos con su equipo de protección personal. */
+  epp: EvidenciaDto[];
+  /** Fotos generales del sitio. */
+  generales: EvidenciaDto[];
+  /** Qué falta para poder enviar. */
+  progreso: Progreso;
+  /** Envíos, aprobaciones y observaciones, del más antiguo al más reciente. */
+  historial: RevisionDto[];
 }
 
 @Injectable()
@@ -85,8 +120,13 @@ export class InformesService {
     private readonly informes: Repository<Informe>,
     @InjectRepository(ItemOrden)
     private readonly items: Repository<ItemOrden>,
+    @InjectRepository(Evidencia)
+    private readonly evidencias: Repository<Evidencia>,
+    @InjectRepository(RevisionInforme)
+    private readonly revisiones: Repository<RevisionInforme>,
     private readonly ordenes: OrdenesCompraService,
     private readonly usuarios: UsuariosService,
+    private readonly storage: StorageService,
   ) {}
 
   /** ADMIN y SUPERVISOR ven todos; un TECNICO, solo los que tiene asignados. */
@@ -139,11 +179,27 @@ export class InformesService {
     id: string,
     usuario: UsuarioAutenticado,
   ): Promise<InformeDetalle> {
-    const informe = await this.buscarVisible(id, usuario);
-    const items = await this.items.find({
-      where: { ordenId: informe.ordenId, sitioId: informe.sitioId },
-      order: { posicion: 'ASC' },
-    });
+    const informe = await this.buscarParaVer(id, usuario);
+    const [items, evidencias, revisiones] = await Promise.all([
+      this.actividadesDe(informe),
+      this.evidenciasVisibles(informe.id),
+      this.revisiones.find({
+        where: { informeId: informe.id },
+        relations: { usuario: true },
+        order: { creadoEn: 'ASC' },
+      }),
+    ]);
+
+    const fotos = await Promise.all(
+      evidencias.map(async (e) =>
+        presentarEvidencia(
+          e,
+          this.storage.configurado
+            ? await this.storage.urlParaDescargar(e.clave)
+            : null,
+        ),
+      ),
+    );
     const conPrecios = usuario.rol !== Rol.TECNICO;
     const sitio = informe.sitio!;
 
@@ -157,11 +213,19 @@ export class InformesService {
         latitud: sitio.latitud,
         longitud: sitio.longitud,
       },
-      ubicacion:
-        informe.latitud !== null && informe.longitud !== null
-          ? { latitud: informe.latitud, longitud: informe.longitud }
+      ubicacion: ubicacionDe(informe),
+      actividades: items.map((item) => actividad(item, fotos, conPrecios)),
+      epp: fotos.filter((f) => f.tipo === TipoEvidencia.EPP),
+      generales: fotos.filter((f) => f.tipo === TipoEvidencia.GENERAL),
+      progreso: progresoDe(informe, items, evidencias),
+      historial: revisiones.map((r) => ({
+        accion: r.accion,
+        comentario: r.comentario,
+        usuario: r.usuario
+          ? { id: r.usuario.id, nombre: r.usuario.nombre }
           : null,
-      actividades: items.map((item) => actividad(item, conPrecios)),
+        fecha: r.creadoEn,
+      })),
     };
   }
 
@@ -205,7 +269,7 @@ export class InformesService {
     dto: AsignarTecnicosDto,
     usuario: UsuarioAutenticado,
   ): Promise<InformeDetalle> {
-    const informe = await this.buscarVisible(id, usuario);
+    const informe = await this.buscarParaVer(id, usuario);
     if (informe.estado === EstadoInforme.APROBADO) {
       throw new ConflictException('El informe ya está aprobado');
     }
@@ -222,7 +286,7 @@ export class InformesService {
     dto: UbicacionDto,
     usuario: UsuarioAutenticado,
   ): Promise<InformeDetalle> {
-    const informe = await this.buscarEditable(id, usuario);
+    const informe = await this.buscarParaEditar(id, usuario);
     await this.informes.update(informe.id, {
       latitud: dto.latitud,
       longitud: dto.longitud,
@@ -231,10 +295,63 @@ export class InformesService {
   }
 
   /**
+   * Envía el informe a revisión. Solo si está completo: si falta algo,
+   * responde 409 con la lista de faltantes en `detalles`.
+   */
+  async enviar(
+    id: string,
+    usuario: UsuarioAutenticado,
+  ): Promise<InformeDetalle> {
+    const informe = await this.buscarParaEditar(id, usuario);
+    const [items, evidencias] = await Promise.all([
+      this.actividadesDe(informe),
+      this.evidenciasVisibles(informe.id),
+    ]);
+    const progreso = progresoDe(informe, items, evidencias);
+    if (!progreso.completo) {
+      throw new ConflictException({
+        message: 'El informe está incompleto',
+        detalles: progreso.faltantes,
+      });
+    }
+    await this.cambiarEstado(
+      informe,
+      EstadoInforme.ENVIADO,
+      AccionRevision.ENVIADO,
+      null,
+      usuario,
+    );
+    return this.obtener(id, usuario);
+  }
+
+  /** Aprueba u observa un informe ENVIADO. Al observar, el comentario es obligatorio. */
+  async revisar(
+    id: string,
+    dto: RevisarInformeDto,
+    usuario: UsuarioAutenticado,
+  ): Promise<InformeDetalle> {
+    const informe = await this.buscarParaVer(id, usuario);
+    if (informe.estado !== EstadoInforme.ENVIADO) {
+      throw new ConflictException(
+        `Solo se revisa un informe ENVIADO; este está ${informe.estado}`,
+      );
+    }
+    const aprobar = dto.decision === 'APROBAR';
+    await this.cambiarEstado(
+      informe,
+      aprobar ? EstadoInforme.APROBADO : EstadoInforme.OBSERVADO,
+      aprobar ? AccionRevision.APROBADO : AccionRevision.OBSERVADO,
+      dto.comentario ?? null,
+      usuario,
+    );
+    return this.obtener(id, usuario);
+  }
+
+  /**
    * Busca el informe con sus relaciones. Un técnico no asignado recibe 404,
    * igual que si no existiera: no se revela qué informes hay.
    */
-  private async buscarVisible(
+  async buscarParaVer(
     id: string,
     usuario: UsuarioAutenticado,
   ): Promise<Informe> {
@@ -250,18 +367,54 @@ export class InformesService {
     return informe;
   }
 
-  /** Solo se edita en EN_EJECUCION u OBSERVADO; los supervisores solo consultan. */
-  private async buscarEditable(
+  /** Solo se edita en EN_EJECUCION u OBSERVADO. */
+  async buscarParaEditar(
     id: string,
     usuario: UsuarioAutenticado,
   ): Promise<Informe> {
-    const informe = await this.buscarVisible(id, usuario);
+    const informe = await this.buscarParaVer(id, usuario);
     if (!ESTADOS_EDITABLES.includes(informe.estado)) {
       throw new ConflictException(
         `El informe está ${informe.estado} y no se puede modificar`,
       );
     }
     return informe;
+  }
+
+  /** Ítems de la orden en el sitio del informe, por posición. */
+  actividadesDe(informe: Informe): Promise<ItemOrden[]> {
+    return this.items.find({
+      where: { ordenId: informe.ordenId, sitioId: informe.sitioId },
+      order: { posicion: 'ASC' },
+    });
+  }
+
+  /** Fotos confirmadas y no ocultas, con el técnico y el autor. */
+  evidenciasVisibles(informeId: string): Promise<Evidencia[]> {
+    return this.evidencias.find({
+      where: { informeId, confirmada: true, ocultaEn: IsNull() },
+      relations: { tecnico: true, subidoPor: true },
+      order: { creadoEn: 'ASC' },
+    });
+  }
+
+  /** Cambia el estado y deja constancia en el historial, en una sola transacción. */
+  private async cambiarEstado(
+    informe: Informe,
+    estado: EstadoInforme,
+    accion: AccionRevision,
+    comentario: string | null,
+    usuario: UsuarioAutenticado,
+  ): Promise<void> {
+    await this.informes.manager.transaction(async (em) => {
+      await em.update(Informe, informe.id, { estado });
+      await em.insert(RevisionInforme, {
+        informeId: informe.id,
+        accion,
+        comentario,
+        usuarioId: usuario.id,
+      });
+    });
   }
 
   /** Cuántas actividades tiene cada informe (ítems de su orden en su sitio). */
@@ -307,7 +460,39 @@ function cabecera(informe: Informe): CabeceraInforme {
   };
 }
 
-function actividad(item: ItemOrden, conPrecios: boolean): ActividadDto {
+function ubicacionDe(informe: Informe): InformeDetalle['ubicacion'] {
+  return informe.latitud !== null && informe.longitud !== null
+    ? { latitud: informe.latitud, longitud: informe.longitud }
+    : null;
+}
+
+function progresoDe(
+  informe: Informe,
+  items: ItemOrden[],
+  evidencias: Evidencia[],
+): Progreso {
+  return calcularProgreso({
+    tecnicos: informe.tecnicos ?? [],
+    tieneUbicacion: ubicacionDe(informe) !== null,
+    actividades: items,
+    evidencias,
+  });
+}
+
+function actividad(
+  item: ItemOrden,
+  fotos: EvidenciaDto[],
+  conPrecios: boolean,
+): ActividadDto {
+  const propias = fotos.filter(
+    (f) => f.tipo === TipoEvidencia.ACTIVIDAD && f.itemId === item.id,
+  );
+  // Las etapas exigidas siempre aparecen; si quedó alguna foto de una etapa que
+  // ya no se exige (cambiaron las etapas del ítem), también se muestra.
+  const etapas = ETAPAS_EN_ORDEN.filter(
+    (etapa) =>
+      item.etapas.includes(etapa) || propias.some((f) => f.etapa === etapa),
+  );
   return {
     id: item.id,
     posicion: item.posicion,
@@ -318,6 +503,9 @@ function actividad(item: ItemOrden, conPrecios: boolean): ActividadDto {
     unidad: item.unidad,
     fechaEntrega: item.fechaEntrega,
     etapas: item.etapas,
+    evidencias: Object.fromEntries(
+      etapas.map((etapa) => [etapa, propias.filter((f) => f.etapa === etapa)]),
+    ),
     ...(conPrecios && {
       precioUnitario: item.precioUnitario,
       monto: redondear2(item.cantidad * item.precioUnitario),

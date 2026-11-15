@@ -6,6 +6,7 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import type { Readable } from 'node:stream';
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { Env } from '../../core/config/env.schema.js';
@@ -101,6 +102,14 @@ export class StorageService {
       if (error instanceof NotFound) return null;
       throw error;
     }
+  }
+
+  /** Lee el archivo como stream (para armar el ZIP del informe en el servidor). */
+  async leer(clave: string): Promise<Readable> {
+    const res = await this.s3().send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: clave }),
+    );
+    return res.Body as Readable;
   }
 
   private s3(): S3Client {

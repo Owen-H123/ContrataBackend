@@ -5,7 +5,29 @@ import {
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
+import { Readable } from 'node:stream';
 import { AppModule } from '../src/app.module.js';
+import { StorageService } from '../src/services/storage/storage.service.js';
+
+/**
+ * R2 simulado en memoria: las pruebas no necesitan credenciales de Cloudflare.
+ * `archivosR2` hace de bucket; una prueba «sube» una foto guardándola ahí.
+ */
+const archivosR2 = new Map<string, Buffer>();
+const r2Falso = {
+  configurado: true,
+  urlParaSubir: async (clave: string) =>
+    `https://r2.test/${clave}?firma=subida`,
+  urlParaDescargar: async (clave: string, nombre?: string) =>
+    `https://r2.test/${clave}?firma=descarga${nombre ? `&nombre=${encodeURIComponent(nombre)}` : ''}`,
+  consultar: async (clave: string) => {
+    const archivo = archivosR2.get(clave);
+    return archivo
+      ? { bytes: archivo.length, tipoContenido: 'image/jpeg' }
+      : null;
+  },
+  leer: async (clave: string) => Readable.from([archivosR2.get(clave)!]),
+};
 
 /**
  * Pruebas de extremo a extremo. Necesitan una base de datos con las migraciones
@@ -31,7 +53,10 @@ describe('API (e2e)', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(StorageService)
+      .useValue(r2Falso)
+      .compile();
     app = moduleRef.createNestApplication();
     app.setGlobalPrefix('api');
     app.useGlobalPipes(new StandardSchemaValidationPipe());
@@ -741,6 +766,377 @@ describe('API (e2e)', () => {
       expect(porTexto.body.map((i: { id: string }) => i.id)).toEqual([
         informeId,
       ]);
+    });
+  });
+
+  describe('evidencias, envío y revisión', () => {
+    let ordenId: string;
+    let itemFotos: string;
+    let itemSinFotos: string;
+    let informeId: string;
+    let tec1: { id: string; token: string };
+    let tec2: { id: string; token: string };
+    let supervisorToken: string;
+    const ruta = () => `/api/informes/${informeId}`;
+
+    async function crearUsuario(nombre: string, rol: string) {
+      const usuario = `${nombre}${sufijo}`;
+      const res = await api()
+        .post('/api/usuarios')
+        .set(auth(adminToken))
+        .send({ nombre, usuario, password: 'clave-segura-123', rol })
+        .expect(201);
+      return {
+        id: res.body.id as string,
+        token: await login(usuario, 'clave-segura-123'),
+      };
+    }
+
+    const foto = (extra: object) => ({
+      nombreArchivo: 'IMG_0001.jpg',
+      tipoContenido: 'image/jpeg',
+      bytes: 2_000_000,
+      ...extra,
+    });
+
+    /** Pide el enlace, «sube» a R2 y confirma. Devuelve la foto confirmada. */
+    async function subirFoto(token: string, datos: object) {
+      const pedido = await api()
+        .post(`${ruta()}/evidencias`)
+        .set(auth(token))
+        .send(foto(datos))
+        .expect(201);
+      const clave = new URL(pedido.body.subida.url as string).pathname.slice(1);
+      archivosR2.set(clave, Buffer.from(`jpeg ${clave}`));
+      const confirmada = await api()
+        .post(`${ruta()}/evidencias/${pedido.body.evidencia.id}/confirmar`)
+        .set(auth(token))
+        .expect(200);
+      return confirmada.body as { id: string; url: string };
+    }
+
+    const detalle = async (token = adminToken) =>
+      (await api().get(ruta()).set(auth(token)).expect(200)).body;
+
+    beforeAll(async () => {
+      const cliente = await api()
+        .post('/api/clientes')
+        .set(auth(adminToken))
+        .send({
+          razonSocial: 'Cliente evidencias',
+          ruc: `24${sufijo}000`.padEnd(11, '4'),
+        })
+        .expect(201);
+      const sitio = await api()
+        .post('/api/sitios')
+        .set(auth(adminToken))
+        .send({
+          codigo: `PE-EV-${sufijo}`,
+          nombre: 'DOS_ESTRELLAS',
+          clienteId: cliente.body.id,
+        })
+        .expect(201);
+      const orden = await api()
+        .post('/api/ordenes-compra')
+        .set(auth(adminToken))
+        .send({
+          numero: `EV-${sufijo}`,
+          clienteId: cliente.body.id,
+          fechaEmision: '2026-11-12',
+          items: [
+            {
+              sitioId: sitio.body.id,
+              descripcion: 'CAMBIO CABLE VIDA',
+              cantidad: 33,
+              unidad: 'M',
+              precioUnitario: 33.42,
+            },
+            {
+              sitioId: sitio.body.id,
+              descripcion: 'TRANSPORTE',
+              cantidad: 2,
+              unidad: 'SER',
+              precioUnitario: 493.41,
+              etapas: [],
+            },
+          ],
+        })
+        .expect(201);
+      ordenId = orden.body.id as string;
+      [itemFotos, itemSinFotos] = orden.body.items.map(
+        (i: { id: string }) => i.id,
+      );
+
+      tec1 = await crearUsuario('ana', 'TECNICO');
+      tec2 = await crearUsuario('luis', 'TECNICO');
+      supervisorToken = (await crearUsuario('sup', 'SUPERVISOR')).token;
+
+      const informe = await api()
+        .post('/api/informes')
+        .set(auth(adminToken))
+        .send({
+          ordenId,
+          sitioId: sitio.body.id,
+          tecnicoIds: [tec1.id, tec2.id],
+        })
+        .expect(201);
+      informeId = informe.body.id as string;
+    });
+
+    it('un informe nuevo muestra todo lo que falta y no se puede enviar', async () => {
+      const informe = await detalle();
+      expect(informe.progreso).toMatchObject({
+        completo: false,
+        porcentaje: 12,
+      });
+      expect(informe.progreso.faltantes).toEqual(
+        expect.arrayContaining([
+          'Falta registrar la ubicación del sitio',
+          'Faltan fotos generales del sitio',
+          'Falta la foto de EPP de ana',
+          'Falta la foto de EPP de luis',
+          'Actividad 10 (CAMBIO CABLE VIDA): falta la foto de proceso',
+        ]),
+      );
+      expect(informe.actividades[0].evidencias).toEqual({
+        ANTES: [],
+        PROCESO: [],
+        DESPUES: [],
+      });
+      expect(informe.actividades[1].evidencias).toEqual({});
+
+      const envio = await api()
+        .post(`${ruta()}/enviar`)
+        .set(auth(tec1.token))
+        .expect(409);
+      expect(envio.body.message).toBe('El informe está incompleto');
+      expect(envio.body.detalles).toHaveLength(7);
+    });
+
+    it('valida cada foto antes de dar el enlace de subida', async () => {
+      const pedir = (token: string, datos: object) =>
+        api().post(`${ruta()}/evidencias`).set(auth(token)).send(foto(datos));
+      await pedir(tec1.token, {
+        tipo: 'ACTIVIDAD',
+        itemId: itemSinFotos,
+        etapa: 'ANTES',
+      }).expect(409);
+      await pedir(tec1.token, { tipo: 'ACTIVIDAD', itemId: itemFotos }).expect(
+        400,
+      );
+      await pedir(tec1.token, {
+        tipo: 'GENERAL',
+        tipoContenido: 'application/pdf',
+      }).expect(400);
+      await pedir(tec1.token, { tipo: 'GENERAL', bytes: 30_000_000 }).expect(
+        400,
+      );
+      await pedir(adminToken, { tipo: 'EPP' }).expect(400);
+      const ajeno = await crearUsuario('externo', 'TECNICO');
+      await pedir(adminToken, { tipo: 'EPP', tecnicoId: ajeno.id }).expect(409);
+      await pedir(supervisorToken, { tipo: 'GENERAL' }).expect(403);
+    });
+
+    it('una foto no cuenta hasta confirmar que llegó a R2', async () => {
+      const pedido = await api()
+        .post(`${ruta()}/evidencias`)
+        .set(auth(tec1.token))
+        .send(foto({ tipo: 'GENERAL' }))
+        .expect(201);
+      expect(pedido.body.subida).toMatchObject({
+        metodo: 'PUT',
+        headers: { 'Content-Type': 'image/jpeg' },
+        expiraEnSegundos: 900,
+      });
+      await api()
+        .post(`${ruta()}/evidencias/${pedido.body.evidencia.id}/confirmar`)
+        .set(auth(tec1.token))
+        .expect(409);
+      expect((await detalle()).generales).toHaveLength(0);
+    });
+
+    it('solo el autor o un administrador comenta o quita una foto', async () => {
+      const general = await subirFoto(tec1.token, {
+        tipo: 'GENERAL',
+        comentario: 'Vista norte',
+      });
+      await api()
+        .patch(`${ruta()}/evidencias/${general.id}`)
+        .set(auth(tec2.token))
+        .send({ comentario: 'x' })
+        .expect(403);
+      const editada = await api()
+        .patch(`${ruta()}/evidencias/${general.id}`)
+        .set(auth(tec1.token))
+        .send({ comentario: 'Vista norte de la torre' })
+        .expect(200);
+      expect(editada.body.comentario).toBe('Vista norte de la torre');
+
+      await api()
+        .delete(`${ruta()}/evidencias/${general.id}`)
+        .set(auth(tec1.token))
+        .expect(204);
+      expect((await detalle()).generales).toHaveLength(0);
+    });
+
+    it('con todo cargado, el informe queda completo al 100 %', async () => {
+      await api()
+        .patch(`${ruta()}/ubicacion`)
+        .set(auth(tec1.token))
+        .send({ latitud: -9.0901, longitud: -78.5588 })
+        .expect(200);
+      await subirFoto(tec1.token, { tipo: 'GENERAL' });
+      await subirFoto(tec1.token, { tipo: 'EPP' });
+      await subirFoto(tec2.token, { tipo: 'EPP' });
+      for (const etapa of ['ANTES', 'PROCESO', 'DESPUES']) {
+        await subirFoto(tec1.token, {
+          tipo: 'ACTIVIDAD',
+          itemId: itemFotos,
+          etapa,
+        });
+      }
+
+      const informe = await detalle(tec1.token);
+      expect(informe.progreso).toEqual({
+        completo: true,
+        porcentaje: 100,
+        faltantes: [],
+      });
+      expect(
+        informe.epp
+          .map((f: { tecnico: { id: string } }) => f.tecnico.id)
+          .sort(),
+      ).toEqual([tec1.id, tec2.id].sort());
+      expect(informe.actividades[0].evidencias.ANTES[0]).toMatchObject({
+        tipo: 'ACTIVIDAD',
+        etapa: 'ANTES',
+        subidoPor: { id: tec1.id },
+        bytes: expect.any(Number),
+        url: expect.stringContaining('https://r2.test/informes/'),
+      });
+      expect(informe.actividades[0].evidencias.ANTES[0]).not.toHaveProperty(
+        'clave',
+      );
+    });
+
+    it('descarga una foto con su nombre y todas en un ZIP ordenado', async () => {
+      const informe = await detalle(tec1.token);
+      const fotoId = informe.generales[0].id as string;
+      const enlace = await api()
+        .get(`${ruta()}/evidencias/${fotoId}/descarga`)
+        .set(auth(supervisorToken))
+        .expect(200);
+      expect(enlace.body.url).toContain('nombre=IMG_0001.jpg');
+
+      const zip = await api()
+        .get(`${ruta()}/fotos.zip`)
+        .set(auth(adminToken))
+        .buffer(true)
+        .parse((res, cb) => {
+          const partes: Buffer[] = [];
+          res.on('data', (parte: Buffer) => partes.push(parte));
+          res.on('end', () => cb(null, Buffer.concat(partes)));
+        })
+        .expect(200);
+      expect(zip.headers['content-type']).toBe('application/zip');
+      const contenido = (zip.body as Buffer).toString('utf8');
+      expect(contenido.startsWith('PK')).toBe(true);
+      for (const nombre of [
+        'Fotos generales/1.jpg',
+        'EPP/ana/1.jpg',
+        'EPP/luis/1.jpg',
+        'Actividades/010 CAMBIO CABLE VIDA/Antes/1.jpg',
+        'Actividades/010 CAMBIO CABLE VIDA/Proceso/1.jpg',
+        'Actividades/010 CAMBIO CABLE VIDA/Después/1.jpg',
+      ]) {
+        expect(contenido).toContain(nombre);
+      }
+    });
+
+    it('protege en la orden lo que ya tiene fotos', async () => {
+      const quitar = (itemId: string) =>
+        api()
+          .delete(`/api/ordenes-compra/${ordenId}/items/${itemId}`)
+          .set(auth(adminToken));
+      const res = await quitar(itemFotos).expect(409);
+      expect(res.body.message).toMatch(/ya tiene fotos/);
+      await quitar(itemSinFotos).expect(200);
+    });
+
+    it('el técnico envía y el informe queda bloqueado', async () => {
+      const enviado = await api()
+        .post(`${ruta()}/enviar`)
+        .set(auth(tec1.token))
+        .expect(200);
+      expect(enviado.body.estado).toBe('ENVIADO');
+      expect(enviado.body.historial).toEqual([
+        expect.objectContaining({
+          accion: 'ENVIADO',
+          usuario: expect.objectContaining({ id: tec1.id }),
+        }),
+      ]);
+
+      await api().post(`${ruta()}/enviar`).set(auth(tec1.token)).expect(409);
+      await api()
+        .post(`${ruta()}/evidencias`)
+        .set(auth(tec1.token))
+        .send(foto({ tipo: 'GENERAL' }))
+        .expect(409);
+    });
+
+    it('al observar se exige comentario y el informe vuelve a ser editable', async () => {
+      await api()
+        .post(`${ruta()}/revision`)
+        .set(auth(tec1.token))
+        .send({ decision: 'APROBAR' })
+        .expect(403);
+      await api()
+        .post(`${ruta()}/revision`)
+        .set(auth(supervisorToken))
+        .send({ decision: 'OBSERVAR' })
+        .expect(400);
+      const observado = await api()
+        .post(`${ruta()}/revision`)
+        .set(auth(supervisorToken))
+        .send({
+          decision: 'OBSERVAR',
+          comentario: 'Falta foto del templador después',
+        })
+        .expect(200);
+      expect(observado.body.estado).toBe('OBSERVADO');
+
+      await subirFoto(tec1.token, {
+        tipo: 'ACTIVIDAD',
+        itemId: itemFotos,
+        etapa: 'DESPUES',
+      });
+      await api().post(`${ruta()}/enviar`).set(auth(tec1.token)).expect(200);
+    });
+
+    it('Samira aprueba y queda el historial completo', async () => {
+      const aprobado = await api()
+        .post(`${ruta()}/revision`)
+        .set(auth(adminToken))
+        .send({ decision: 'APROBAR' })
+        .expect(200);
+      expect(aprobado.body.estado).toBe('APROBADO');
+      expect(
+        aprobado.body.historial.map((h: { accion: string }) => h.accion),
+      ).toEqual(['ENVIADO', 'OBSERVADO', 'ENVIADO', 'APROBADO']);
+      expect(aprobado.body.historial[1].comentario).toBe(
+        'Falta foto del templador después',
+      );
+
+      await api()
+        .post(`${ruta()}/revision`)
+        .set(auth(adminToken))
+        .send({ decision: 'APROBAR' })
+        .expect(409);
+      await api()
+        .put(`${ruta()}/tecnicos`)
+        .set(auth(adminToken))
+        .send({ tecnicoIds: [tec1.id] })
+        .expect(409);
     });
   });
 });

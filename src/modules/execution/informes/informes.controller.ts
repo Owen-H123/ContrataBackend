@@ -2,6 +2,8 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -20,6 +22,8 @@ import {
   crearInformeSchema,
   type FiltrosInformeDto,
   filtrosInformeSchema,
+  type RevisarInformeDto,
+  revisarInformeSchema,
   type UbicacionDto,
   ubicacionSchema,
 } from './dto/informe.schema.js';
@@ -27,7 +31,8 @@ import { InformesService } from './informes.service.js';
 
 /**
  * Consultar: todos los roles (un TECNICO solo ve los informes que tiene asignados, sin precios).
- * Abrir informes y asignar técnicos: ADMIN. Registrar la ubicación: ADMIN o el técnico asignado.
+ * Abrir informes y asignar técnicos: ADMIN. Registrar la ubicación y enviar: ADMIN o el técnico asignado.
+ * Revisar (aprobar u observar): ADMIN y SUPERVISOR.
  */
 @Controller('informes')
 export class InformesController {
@@ -76,5 +81,27 @@ export class InformesController {
     @CurrentUser() usuario: UsuarioAutenticado,
   ) {
     return this.informes.registrarUbicacion(id, dto, usuario);
+  }
+
+  /** Envía a revisión. 409 con `detalles` si falta algo. */
+  @Roles(Rol.ADMIN, Rol.TECNICO)
+  @Post(':id/enviar')
+  @HttpCode(HttpStatus.OK)
+  enviar(
+    @Param('id', { schema: idSchema }) id: string,
+    @CurrentUser() usuario: UsuarioAutenticado,
+  ) {
+    return this.informes.enviar(id, usuario);
+  }
+
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR)
+  @Post(':id/revision')
+  @HttpCode(HttpStatus.OK)
+  revisar(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: revisarInformeSchema }) dto: RevisarInformeDto,
+    @CurrentUser() usuario: UsuarioAutenticado,
+  ) {
+    return this.informes.revisar(id, dto, usuario);
   }
 }

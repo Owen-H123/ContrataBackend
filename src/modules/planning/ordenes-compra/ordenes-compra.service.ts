@@ -8,6 +8,8 @@ import { Repository } from 'typeorm';
 import { escaparLike } from '../../../shared/database/escapar-like.js';
 import { redondear2 } from '../../../shared/entities/numerico.transformer.js';
 import { ETAPAS_EN_ORDEN } from '../../../shared/enums/etapa-evidencia.enum.js';
+import { Evidencia } from '../../execution/evidencias/entities/evidencia.entity.js';
+import { Informe } from '../../execution/informes/entities/informe.entity.js';
 import { ClientesService } from '../../master/clientes/clientes.service.js';
 import { SitiosService } from '../../master/sitios/sitios.service.js';
 import type {
@@ -158,6 +160,7 @@ export class OrdenesCompraService {
     const orden = await this.buscarEditable(ordenId);
     const item = await this.buscarItem(ordenId, itemId);
     if (dto.sitioId && dto.sitioId !== item.sitioId) {
+      await this.exigirSinEvidencias(item, 'cambiar de sitio');
       await this.sitios.exigirDelCliente([dto.sitioId], orden.clienteId);
     }
     if (dto.posicion !== undefined && dto.posicion !== item.posicion) {
@@ -174,8 +177,38 @@ export class OrdenesCompraService {
     if ((await this.items.countBy({ ordenId })) <= 1) {
       throw new ConflictException('La orden necesita al menos un ítem');
     }
+    await this.exigirSinEvidencias(item, 'quitar');
     await this.items.remove(item);
     return this.obtener(ordenId);
+  }
+
+  /**
+   * Protege lo ya documentado en campo: una actividad con fotos no se quita ni
+   * cambia de sitio, y un informe abierto no se queda sin actividades.
+   */
+  private async exigirSinEvidencias(
+    item: ItemOrden,
+    accion: string,
+  ): Promise<void> {
+    const em = this.items.manager;
+    if (await em.existsBy(Evidencia, { itemId: item.id })) {
+      throw new ConflictException(
+        `La actividad ${item.posicion} ya tiene fotos; no se puede ${accion}`,
+      );
+    }
+    const tieneInforme = await em.existsBy(Informe, {
+      ordenId: item.ordenId,
+      sitioId: item.sitioId,
+    });
+    const delMismoSitio = await this.items.countBy({
+      ordenId: item.ordenId,
+      sitioId: item.sitioId,
+    });
+    if (tieneInforme && delMismoSitio <= 1) {
+      throw new ConflictException(
+        `La actividad ${item.posicion} es la única de su sitio, que ya tiene informe; no se puede ${accion}`,
+      );
+    }
   }
 
   private async buscar(id: string): Promise<OrdenCompra> {

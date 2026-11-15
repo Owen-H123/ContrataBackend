@@ -4,6 +4,8 @@ import { Sitio } from '../../modules/master/sitios/entities/sitio.entity.js';
 import { ItemOrden } from '../../modules/planning/ordenes-compra/entities/item-orden.entity.js';
 import { OrdenCompra } from '../../modules/planning/ordenes-compra/entities/orden-compra.entity.js';
 import { Informe } from '../../modules/execution/informes/entities/informe.entity.js';
+import { RevisionInforme } from '../../modules/execution/informes/entities/revision-informe.entity.js';
+import { Evidencia } from '../../modules/execution/evidencias/entities/evidencia.entity.js';
 
 /**
  * Lista única de entidades. La usan la aplicación y la línea de comandos de
@@ -16,4 +18,6 @@ export const entities = [
   OrdenCompra,
   ItemOrden,
   Informe,
+  RevisionInforme,
+  Evidencia,
 ];

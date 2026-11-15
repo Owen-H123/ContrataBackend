@@ -57,7 +57,8 @@ src/
 │   ├── planning/         Planificación
 │   │   └── ordenes-compra/  Órdenes de compra y sus ítems (las actividades)
 │   └── execution/        Ejecución en campo
-│       └── informes/     Informe por orden y sitio, técnicos asignados, ubicación
+│       ├── informes/     Informe por orden y sitio, técnicos, ubicación, envío y revisión
+│       └── evidencias/   Fotos por actividad y etapa, EPP y generales; descarga y ZIP
 ├── services/             Integraciones externas
 │   └── storage/          Fotos en Cloudflare R2 (enlaces firmados)
 └── shared/               Piezas reutilizables
@@ -67,7 +68,7 @@ src/
     └── validation/       Esquemas comunes (id)
 ```
 
-Pendiente: evidencias fotográficas y EPP en `modules/execution`, y el envío y la revisión de informes.
+Pendiente: informe en PDF, importar órdenes desde el PDF del cliente y catálogo de EPP configurable.
 
 ### Cómo agregar un módulo
 
@@ -86,6 +87,7 @@ Todas bajo `/api`. Las de consulta piden sesión; las de escritura, el rol indic
 |---|---|---|
 | `POST /auth/login` | Pública | Inicia sesión y devuelve el token |
 | `GET /auth/me` | Sesión | Perfil del usuario actual |
+| `PATCH /auth/password` | Sesión | Cambiar la propia contraseña (pide la actual) |
 | `GET·POST /usuarios`, `PATCH /usuarios/:id` | ADMIN | Gestión de usuarios |
 | `GET /clientes`, `GET /clientes/:id` | Sesión | Consultar clientes |
 | `POST /clientes`, `PATCH /clientes/:id` | ADMIN | Crear y editar clientes (RUC único de 11 dígitos) |
@@ -103,6 +105,14 @@ Todas bajo `/api`. Las de consulta piden sesión; las de escritura, el rol indic
 | `POST /informes` | ADMIN | Abre el informe de una orden en un sitio y asigna técnicos |
 | `PUT /informes/:id/tecnicos` | ADMIN | Reemplaza los técnicos asignados |
 | `PATCH /informes/:id/ubicacion` | ADMIN, técnico asignado | Guarda la ubicación tomada en campo |
+| `POST /informes/:id/enviar` | ADMIN, técnico asignado | Envía a revisión; 409 con la lista de faltantes si está incompleto |
+| `POST /informes/:id/revision` | ADMIN, SUPERVISOR | Aprobar u observar; al observar, el comentario es obligatorio |
+| `POST /informes/:id/evidencias` | ADMIN, técnico asignado | Registra una foto y devuelve el enlace para subirla a R2 |
+| `POST /informes/:id/evidencias/:evidenciaId/confirmar` | Autor o ADMIN | Verifica en R2 que la foto llegó; desde ahí cuenta |
+| `PATCH /informes/:id/evidencias/:evidenciaId` | Autor o ADMIN | Cambia el comentario |
+| `DELETE /informes/:id/evidencias/:evidenciaId` | Autor o ADMIN | Quita la foto del informe (se oculta; el archivo se conserva) |
+| `GET /informes/:id/evidencias/:evidenciaId/descarga` | Quien ve el informe | Enlace para descargar la foto con su nombre original |
+| `GET /informes/:id/fotos.zip` | Quien ve el informe | Todas las fotos en un ZIP, en carpetas por actividad, etapa, EPP y generales |
 | `GET /health` | Pública | Estado del servidor y de la base |
 
 ### Órdenes de compra
@@ -118,6 +128,18 @@ Todas bajo `/api`. Las de consulta piden sesión; las de escritura, el rol indic
 - Un informe reúne las actividades (ítems) de **una orden en un sitio**; es lo que el técnico abre en campo y lo que luego se envía a revisión.
 - Estados: `EN_EJECUCION` → `ENVIADO` → `APROBADO`, o `OBSERVADO` si hay correcciones. Solo se edita en `EN_EJECUCION` u `OBSERVADO`.
 - Un técnico que no está asignado recibe 404: no puede saber qué otros informes existen.
+- `GET /informes/:id` trae las actividades con sus fotos por etapa, las fotos de EPP y generales, el `progreso` (`completo`, `porcentaje`, `faltantes`) y el `historial`.
+- Para enviar se exige: al menos un técnico, la ubicación, una foto general, **una foto de EPP de cada técnico asignado** y una foto por cada etapa de cada actividad.
+- Al observar, el informe vuelve a ser editable; al aprobar, queda cerrado.
+
+### Fotos
+
+1. `POST /informes/:id/evidencias` con `tipo` (`ACTIVIDAD` con `itemId` y `etapa`, `EPP` con `tecnicoId`, o `GENERAL`), `nombreArchivo`, `tipoContenido` (JPG, PNG, WEBP o HEIC), `bytes` (máx. 25 MB) y opcionalmente `comentario` y `tomadaEn`.
+2. El celular hace `PUT` del archivo a `subida.url` con el `Content-Type` indicado (el enlace dura 15 min).
+3. `POST …/confirmar`: la API verifica en R2 que el archivo llegó. Sin confirmar, la foto no aparece ni cuenta.
+
+Las fotos nunca se borran: quitar una solo la oculta. Una actividad con fotos no se puede quitar de la orden ni cambiar de sitio.
+Las pruebas e2e usan un R2 simulado en memoria: no necesitan credenciales.
 
 ## Fotos en Cloudflare R2
 
@@ -153,6 +175,7 @@ Sin estas variables la API arranca igual; las rutas de fotos responden 503 hasta
 - **La contraseña nunca sale en las respuestas**: `passwordHash` está excluido de las consultas.
 - **La sesión se revalida en cada petición**: si un usuario se desactiva o cambia de rol, rige de inmediato.
 - **Siempre queda un administrador activo**: no se puede desactivar ni quitar el rol al último.
+- **Límite de intentos de login**: 5 fallos en 15 minutos bloquean ese usuario por 15 minutos (429).
 
 ## Comandos
 
