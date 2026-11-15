@@ -36,6 +36,12 @@ export const envSchema = z
     R2_ACCESS_KEY_ID: opcional,
     R2_SECRET_ACCESS_KEY: opcional,
     R2_BUCKET: opcional,
+
+    // Alternativa a R2 para desarrollo o un solo servidor: carpeta del disco.
+    // Se ignora si R2 está configurado.
+    STORAGE_LOCAL_DIR: opcional,
+    // Dirección pública de la API, para armar los enlaces de los archivos locales.
+    PUBLIC_API_URL: opcional,
   })
   .superRefine((env, ctx) => {
     const definidas = R2_VARIABLES.filter((nombre) => env[nombre]);
