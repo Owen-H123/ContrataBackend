@@ -54,7 +54,18 @@ export class UsuariosService {
     return encontrados;
   }
 
-  /** Único punto donde se lee el hash de la contraseña. */
+  /** Usuario con su hash, para verificar la contraseña actual. */
+  async buscarConHash(id: string): Promise<Usuario> {
+    const usuario = await this.usuarios
+      .createQueryBuilder('u')
+      .addSelect('u.passwordHash')
+      .where('u.id = :id', { id })
+      .getOne();
+    if (!usuario) throw new NotFoundException('El usuario no existe');
+    return usuario;
+  }
+
+  /** Lee el hash de la contraseña para iniciar sesión. */
   buscarParaLogin(usuario: string): Promise<Usuario | null> {
     return this.usuarios
       .createQueryBuilder('u')

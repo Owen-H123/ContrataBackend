@@ -132,6 +132,55 @@ describe('API (e2e)', () => {
     });
   });
 
+  describe('seguridad', () => {
+    it('bloquea el login tras 5 intentos fallidos (429)', async () => {
+      const usuario = `bloqueo${sufijo}`;
+      for (let i = 0; i < 5; i++) {
+        await api()
+          .post('/api/auth/login')
+          .send({ usuario, password: 'incorrecta' })
+          .expect(401);
+      }
+      const res = await api()
+        .post('/api/auth/login')
+        .send({ usuario, password: 'incorrecta' })
+        .expect(429);
+      expect(res.body.message).toMatch(/Demasiados intentos/);
+    });
+
+    it('el usuario cambia su propia contraseña', async () => {
+      const usuario = `clave${sufijo}`;
+      await api()
+        .post('/api/usuarios')
+        .set(auth(adminToken))
+        .send({
+          nombre: 'Cambio clave',
+          usuario,
+          password: 'clave-vieja-1',
+          rol: 'TECNICO',
+        })
+        .expect(201);
+      const token = await login(usuario, 'clave-vieja-1');
+
+      await api()
+        .patch('/api/auth/password')
+        .set(auth(token))
+        .send({ actual: 'no-es', nueva: 'clave-nueva-1' })
+        .expect(400);
+      await api()
+        .patch('/api/auth/password')
+        .set(auth(token))
+        .send({ actual: 'clave-vieja-1', nueva: 'clave-nueva-1' })
+        .expect(204);
+
+      await login(usuario, 'clave-nueva-1');
+      await api()
+        .post('/api/auth/login')
+        .send({ usuario, password: 'clave-vieja-1' })
+        .expect(401);
+    });
+  });
+
   describe('clientes y sitios', () => {
     const ruc = `20${sufijo}000`.padEnd(11, '7');
     let clienteId: string;

@@ -5,6 +5,7 @@ import type { Env } from '../config/env.schema.js';
 import { UsuariosModule } from '../../modules/core/usuarios/usuarios.module.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
+import { IntentosLogin } from './intentos-login.js';
 
 @Module({
   imports: [
@@ -21,6 +22,9 @@ import { AuthService } from './auth.service.js';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService],
+  providers: [
+    AuthService,
+    { provide: IntentosLogin, useFactory: () => new IntentosLogin() },
+  ],
 })
 export class AuthModule {}
