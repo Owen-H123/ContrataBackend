@@ -9,7 +9,7 @@ API del sistema de control de trabajos y evidencias en campo.
 1. Instalar dependencias:
 
    ```bash
-   npm install
+   pnpm install
    ```
 
 2. Copiar `.env.example` como `.env` y completar `DATABASE_URL`, `JWT_SECRET` y `SEED_ADMIN_PASSWORD`.
@@ -17,17 +17,17 @@ API del sistema de control de trabajos y evidencias en campo.
 4. Aplicar las migraciones y crear el primer administrador:
 
    ```bash
-   npm run migration:run
+   pnpm migration:run
    ```
 
    ```bash
-   npm run seed
+   pnpm seed
    ```
 
 5. Arrancar en desarrollo:
 
    ```bash
-   npm run start:dev
+   pnpm start:dev
    ```
 
 La API queda en `http://localhost:3000/api`. `GET /api/health` confirma que el servidor llega a la base.
@@ -82,12 +82,12 @@ Cada módulo sigue la misma forma: `entities/`, `dto/` (esquemas Zod), `*.servic
 
 | Comando | Qué hace |
 |---|---|
-| `npm run start:dev` | Servidor con recarga automática |
-| `npm run build` | Compila a `dist/` |
-| `npm run migration:generate -- src/core/database/migrations/Nombre --esm` | Crea una migración a partir de los cambios en las entidades |
-| `npm run migration:run` | Aplica las migraciones pendientes |
-| `npm run migration:revert` | Deshace la última migración |
-| `npm run seed` | Crea el primer administrador |
-| `npm test` | Pruebas unitarias |
-| `npm run test:e2e` | Pruebas de extremo a extremo (necesitan base con migraciones y seed) |
-| `npm run lint` | Revisión estática |
+| `pnpm start:dev` | Servidor con recarga automática |
+| `pnpm build` | Compila a `dist/` |
+| `pnpm migration:generate src/core/database/migrations/Nombre --esm` | Crea una migración a partir de los cambios en las entidades |
+| `pnpm migration:run` | Aplica las migraciones pendientes |
+| `pnpm migration:revert` | Deshace la última migración |
+| `pnpm seed` | Crea el primer administrador |
+| `pnpm test` | Pruebas unitarias |
+| `pnpm test:e2e` | Pruebas de extremo a extremo (necesitan base con migraciones y seed) |
+| `pnpm lint` | Revisión estática |
