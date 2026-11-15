@@ -4,7 +4,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { type FindOptionsWhere, ILike, Repository } from 'typeorm';
+import { type FindOptionsWhere, ILike, In, Repository } from 'typeorm';
+import { escaparLike } from '../../../shared/database/escapar-like.js';
 import { ClientesService } from '../clientes/clientes.service.js';
 import type {
   ActualizarSitioDto,
@@ -72,6 +73,30 @@ export class SitiosService {
     return this.obtener(id);
   }
 
+  /**
+   * Confirma que todos los sitios existen, están activos y son del cliente indicado.
+   * Lo usan las órdenes de compra antes de guardar sus ítems.
+   */
+  async exigirDelCliente(ids: string[], clienteId: string): Promise<void> {
+    const unicos = [...new Set(ids)];
+    const encontrados = await this.sitios.findBy({ id: In(unicos) });
+    if (encontrados.length !== unicos.length) {
+      throw new NotFoundException('Uno de los sitios no existe');
+    }
+    const ajeno = encontrados.find((s) => s.clienteId !== clienteId);
+    if (ajeno) {
+      throw new ConflictException(
+        `El sitio ${ajeno.codigo} no pertenece al cliente de la orden`,
+      );
+    }
+    const inactivo = encontrados.find((s) => !s.activo);
+    if (inactivo) {
+      throw new ConflictException(
+        `El sitio ${inactivo.codigo} está desactivado`,
+      );
+    }
+  }
+
   private async exigirCodigoLibre(codigo: string): Promise<void> {
     if (await this.sitios.existsBy({ codigo })) {
       throw new ConflictException('Ya existe un sitio con ese código');
@@ -84,9 +109,4 @@ export class SitiosService {
       throw new ConflictException('El cliente está desactivado');
     }
   }
-}
-
-/** Evita que %, _ o \ escritos por el usuario actúen como comodines. */
-function escaparLike(texto: string): string {
-  return texto.replace(/[\\%_]/g, '\\$&');
 }

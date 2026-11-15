@@ -10,6 +10,7 @@ import { AuthModule } from './core/auth/auth.module.js';
 import { HealthModule } from './modules/core/health/health.module.js';
 import { UsuariosModule } from './modules/core/usuarios/usuarios.module.js';
 import { MasterModule } from './modules/master/master.module.js';
+import { PlanningModule } from './modules/planning/planning.module.js';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { MasterModule } from './modules/master/master.module.js';
     UsuariosModule,
     HealthModule,
     MasterModule,
+    PlanningModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

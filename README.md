@@ -51,16 +51,19 @@ src/
 │   ├── core/
 │   │   ├── usuarios/     Gestión de usuarios (solo ADMIN)
 │   │   └── health/
-│   └── master/           Datos maestros
+│   ├── master/           Datos maestros
 │       ├── clientes/     Empresas que emiten las órdenes de compra
 │       └── sitios/       Torres o estaciones (código PE-…, nombre, ubicación)
+│   └── planning/         Planificación
+│       └── ordenes-compra/  Órdenes de compra y sus ítems (las actividades)
 └── shared/               Piezas reutilizables
-    ├── entities/         Columnas base: id y fechas
-    ├── enums/            Roles
+    ├── database/         Utilidades de consulta (escapar LIKE)
+    ├── entities/         Columnas base, conversión de numeric y redondeo
+    ├── enums/            Roles y etapas de evidencia (antes, proceso, después)
     └── validation/       Esquemas comunes (id)
 ```
 
-Dominios previstos: `modules/master` (catálogo de EPP), `modules/planning` (órdenes de compra e ítems), `modules/execution` (informes, evidencias, EPP, revisiones) y `services/storage` (fotos en Cloudflare R2).
+Dominios previstos: `modules/master` (catálogo de EPP), `modules/execution` (informes, evidencias, EPP, revisiones) y `services/storage` (fotos en Cloudflare R2).
 
 ### Cómo agregar un módulo
 
@@ -85,7 +88,21 @@ Todas bajo `/api`. Las de consulta piden sesión; las de escritura, el rol indic
 | `GET /sitios?clienteId=&q=&activo=` | Sesión | Buscar sitios por cliente, código o nombre |
 | `GET /sitios/:id` | Sesión | Detalle de un sitio con su cliente |
 | `POST /sitios`, `PATCH /sitios/:id` | ADMIN | Crear y editar sitios (código único, en mayúsculas) |
+| `GET /ordenes-compra?clienteId=&sitioId=&estado=&q=` | ADMIN, SUPERVISOR | Lista de órdenes con cantidad de ítems y subtotal |
+| `GET /ordenes-compra/:id` | ADMIN, SUPERVISOR | Orden con sus ítems, el monto de cada uno y el subtotal |
+| `POST /ordenes-compra` | ADMIN | Registra la orden con todos sus ítems |
+| `PATCH /ordenes-compra/:id` | ADMIN | Edita la cabecera o cambia el estado (ABIERTA, CERRADA, ANULADA) |
+| `POST /ordenes-compra/:id/items` | ADMIN | Agrega un ítem (solo si la orden está ABIERTA) |
+| `PATCH·DELETE /ordenes-compra/:id/items/:itemId` | ADMIN | Edita o quita un ítem (solo si la orden está ABIERTA) |
 | `GET /health` | Pública | Estado del servidor y de la base |
+
+### Órdenes de compra
+
+- Cada ítem es una línea de la orden: posición, sitio, código de material, descripción, cantidad, unidad, precio y fecha de entrega.
+- El sitio de cada ítem debe ser del mismo cliente que la orden; así una orden puede cubrir uno o varios sitios.
+- `etapas` indica qué fotos exige el ítem: por omisión `["ANTES","PROCESO","DESPUES"]`; `[]` para líneas sin fotos, como el transporte.
+- Si no se indica la posición, se numera de 10 en 10 después de la mayor (10, 20, 30…).
+- El monto de cada ítem y el subtotal se calculan, no se guardan; el subtotal no incluye impuestos.
 
 ## Reglas de la base
 
