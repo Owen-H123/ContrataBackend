@@ -695,6 +695,48 @@ describe('API (e2e)', () => {
       expect(res.body.actividades[0]).not.toHaveProperty('monto');
     });
 
+    it('el técnico solo ve el sitio: ni el número de la orden ni el cliente', async () => {
+      const lista = await api()
+        .get('/api/informes')
+        .set(auth(tec1.token))
+        .expect(200);
+      expect(lista.body).toHaveLength(1);
+      expect(lista.body[0]).not.toHaveProperty('orden');
+      expect(lista.body[0].sitio).toMatchObject({ id: sitioA });
+
+      const detalle = await api()
+        .get(`/api/informes/${informeId}`)
+        .set(auth(tec1.token))
+        .expect(200);
+      expect(detalle.body).not.toHaveProperty('orden');
+      expect(JSON.stringify(detalle.body)).not.toContain(`IN-${sufijo}`);
+      expect(JSON.stringify(detalle.body)).not.toContain('Cliente informes');
+
+      // Buscar por número de orden no encuentra nada; por sitio sí.
+      const porOrden = await api()
+        .get('/api/informes')
+        .query({ q: `IN-${sufijo}` })
+        .set(auth(tec1.token))
+        .expect(200);
+      expect(porOrden.body).toHaveLength(0);
+      const porSitio = await api()
+        .get('/api/informes')
+        .query({ q: `PE-IA-${sufijo}` })
+        .set(auth(tec1.token))
+        .expect(200);
+      expect(porSitio.body).toHaveLength(1);
+
+      // El administrador sí ve la orden y el cliente.
+      const admin = await api()
+        .get(`/api/informes/${informeId}`)
+        .set(auth(adminToken))
+        .expect(200);
+      expect(admin.body.orden).toMatchObject({
+        numero: `IN-${sufijo}`,
+        cliente: { razonSocial: 'Cliente informes' },
+      });
+    });
+
     it('el técnico asignado registra la ubicación tomada en campo', async () => {
       const res = await api()
         .patch(`/api/informes/${informeId}/ubicacion`)

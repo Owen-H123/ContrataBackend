@@ -255,8 +255,11 @@ export class EvidenciasService {
       );
     }
 
+    // El técnico no ve la orden de compra: su ZIP lleva solo el código del sitio.
     const nombre = limpiar(
-      `Informe ${informe.sitio!.codigo} OC ${informe.orden!.numero}`,
+      usuario.rol === Rol.TECNICO
+        ? `Informe ${informe.sitio!.codigo}`
+        : `Informe ${informe.sitio!.codigo} OC ${informe.orden!.numero}`,
     );
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader(

@@ -74,7 +74,8 @@ interface CabeceraInforme {
   estado: EstadoInforme;
   creadoEn: Date;
   actualizadoEn: Date;
-  orden: {
+  /** Datos comerciales de la orden. No se entregan a un TECNICO: solo ve el sitio. */
+  orden?: {
     id: string;
     numero: string;
     fechaEmision: string;
@@ -166,16 +167,19 @@ export class InformesService {
       qb.andWhere('i.sitioId = :sitioId', { sitioId: filtros.sitioId });
     }
     if (filtros.q) {
-      qb.andWhere(
-        '(s.codigo ILIKE :q OR s.nombre ILIKE :q OR o.numero ILIKE :q)',
-        { q: `%${escaparLike(filtros.q)}%` },
-      );
+      // Un técnico no conoce el número de la orden: solo busca por sitio.
+      const porOrden =
+        usuario.rol === Rol.TECNICO ? '' : ' OR o.numero ILIKE :q';
+      qb.andWhere(`(s.codigo ILIKE :q OR s.nombre ILIKE :q${porOrden})`, {
+        q: `%${escaparLike(filtros.q)}%`,
+      });
     }
 
     const informes = await qb.getMany();
     const conteos = await this.contarActividades(informes);
+    const verOrden = usuario.rol !== Rol.TECNICO;
     return informes.map((informe) => ({
-      ...cabecera(informe),
+      ...cabecera(informe, verOrden),
       cantidadActividades:
         conteos.get(`${informe.ordenId}:${informe.sitioId}`) ?? 0,
     }));
@@ -217,7 +221,7 @@ export class InformesService {
     const sitio = informe.sitio!;
 
     return {
-      ...cabecera(informe),
+      ...cabecera(informe, usuario.rol !== Rol.TECNICO),
       sitio: {
         id: sitio.id,
         codigo: sitio.codigo,
@@ -477,7 +481,7 @@ export class InformesService {
   }
 }
 
-function cabecera(informe: Informe): CabeceraInforme {
+function cabecera(informe: Informe, verOrden: boolean): CabeceraInforme {
   const orden = informe.orden!;
   const sitio = informe.sitio!;
   return {
@@ -485,16 +489,18 @@ function cabecera(informe: Informe): CabeceraInforme {
     estado: informe.estado,
     creadoEn: informe.creadoEn,
     actualizadoEn: informe.actualizadoEn,
-    orden: {
-      id: orden.id,
-      numero: orden.numero,
-      fechaEmision: orden.fechaEmision,
-      estado: orden.estado,
-      cliente: {
-        id: orden.cliente!.id,
-        razonSocial: orden.cliente!.razonSocial,
+    ...(verOrden && {
+      orden: {
+        id: orden.id,
+        numero: orden.numero,
+        fechaEmision: orden.fechaEmision,
+        estado: orden.estado,
+        cliente: {
+          id: orden.cliente!.id,
+          razonSocial: orden.cliente!.razonSocial,
+        },
       },
-    },
+    }),
     sitio: { id: sitio.id, codigo: sitio.codigo, nombre: sitio.nombre },
     tecnicos: (informe.tecnicos ?? [])
       .map((t) => ({ id: t.id, nombre: t.nombre, usuario: t.usuario }))
