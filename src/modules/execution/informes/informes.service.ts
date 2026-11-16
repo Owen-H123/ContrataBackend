@@ -14,7 +14,10 @@ import {
 } from '../../../shared/enums/etapa-evidencia.enum.js';
 import { Rol } from '../../../shared/enums/rol.enum.js';
 import { StorageService } from '../../../services/storage/storage.service.js';
-import { TipoNotificacion } from '../../core/notificaciones/entities/notificacion.entity.js';
+import {
+  Notificacion,
+  TipoNotificacion,
+} from '../../core/notificaciones/entities/notificacion.entity.js';
 import { NotificacionesService } from '../../core/notificaciones/notificaciones.service.js';
 import { UsuariosService } from '../../core/usuarios/usuarios.service.js';
 import { ItemOrden } from '../../planning/ordenes-compra/entities/item-orden.entity.js';
@@ -424,6 +427,28 @@ export class InformesService {
       sitioId: informe.sitioId,
     });
     return this.obtener(id, usuario);
+  }
+
+  /**
+   * Elimina un informe creado por error. Solo si no tiene ninguna foto (ni ocultas
+   * ni pendientes de confirmar): la evidencia de campo nunca se pierde.
+   * Técnicos asignados e historial caen en cascada; sus avisos se borran aquí.
+   */
+  async eliminar(id: string, usuario: UsuarioAutenticado): Promise<void> {
+    const informe = await this.buscarParaVer(id, usuario);
+    const fotos = await this.evidencias.count({
+      where: { informeId: informe.id },
+      withDeleted: true,
+    });
+    if (fotos > 0) {
+      throw new ConflictException(
+        'El informe ya tiene fotos y no se puede eliminar',
+      );
+    }
+    await this.informes.manager.transaction(async (em) => {
+      await em.delete(Notificacion, { informeId: informe.id });
+      await em.delete(Informe, informe.id);
+    });
   }
 
   /**
