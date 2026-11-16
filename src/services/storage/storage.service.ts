@@ -1,4 +1,5 @@
 import {
+  DeleteObjectCommand,
   GetObjectCommand,
   HeadObjectCommand,
   NotFound,
@@ -8,7 +9,7 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, rename, stat } from 'node:fs/promises';
+import { mkdir, rename, rm, stat } from 'node:fs/promises';
 import { dirname, join, normalize, sep } from 'node:path';
 import type { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -37,6 +38,7 @@ interface Almacen {
   urlParaDescargar(clave: string, nombreDescarga?: string): Promise<string>;
   consultar(clave: string): Promise<ArchivoGuardado | null>;
   leer(clave: string): Promise<Readable>;
+  borrar(clave: string): Promise<void>;
 }
 
 /**
@@ -49,7 +51,8 @@ interface Almacen {
  *   del disco y la propia API los recibe y entrega por `/api/archivos/...`,
  *   también con enlaces firmados. Se activa con `STORAGE_LOCAL_DIR`.
  *
- * Las fotos no se borran desde aquí: se conservan aunque se oculten en la app.
+ * Las fotos se conservan aunque se oculten en la app; solo se borran cuando un
+ * ADMIN elimina definitivamente una foto ya descartada.
  */
 @Injectable()
 export class StorageService implements Almacen {
@@ -101,6 +104,11 @@ export class StorageService implements Almacen {
   /** Lee el archivo como stream (para armar el ZIP del informe en el servidor). */
   async leer(clave: string): Promise<Readable> {
     return this.activo().leer(clave);
+  }
+
+  /** Borra el archivo. No falla si ya no existe. */
+  async borrar(clave: string): Promise<void> {
+    return this.activo().borrar(clave);
   }
 
   /** El almacén local, si es el activo (lo usa el controlador de /archivos). */
@@ -184,6 +192,12 @@ class AlmacenR2 implements Almacen {
     );
     return res.Body as Readable;
   }
+
+  async borrar(clave: string): Promise<void> {
+    await this.cliente.send(
+      new DeleteObjectCommand({ Bucket: this.bucket, Key: clave }),
+    );
+  }
 }
 
 /**
@@ -237,6 +251,10 @@ export class AlmacenLocal implements Almacen {
 
   leer(clave: string): Promise<Readable> {
     return Promise.resolve(createReadStream(this.ruta(clave)));
+  }
+
+  async borrar(clave: string): Promise<void> {
+    await rm(this.ruta(clave), { force: true });
   }
 
   /** Guarda lo que llega por PUT; escribe en un temporal y recién luego lo renombra. */

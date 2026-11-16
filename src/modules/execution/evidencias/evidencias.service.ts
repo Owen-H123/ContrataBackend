@@ -245,6 +245,38 @@ export class EvidenciasService {
   }
 
   /** Devuelve al informe una foto descartada (solo ADMIN). */
+  /**
+   * Borra para siempre una foto YA descartada (solo ADMIN): registro y archivo.
+   * Primero el registro, así nunca queda una foto apuntando a un archivo borrado;
+   * si luego falla el borrado del archivo, solo queda un archivo huérfano.
+   */
+  async eliminarDescartada(
+    informeId: string,
+    evidenciaId: string,
+    usuario: UsuarioAutenticado,
+  ): Promise<void> {
+    const informe = await this.informes.buscarParaVer(informeId, usuario);
+    const evidencia = await this.evidencias.findOneBy({
+      id: evidenciaId,
+      informeId: informe.id,
+      confirmada: true,
+      ocultaEn: Not(IsNull()),
+    });
+    if (!evidencia) {
+      throw new NotFoundException(
+        'Solo se eliminan fotos que ya están descartadas',
+      );
+    }
+    await this.evidencias.delete(evidencia.id);
+    try {
+      await this.storage.borrar(evidencia.clave);
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo borrar el archivo ${evidencia.clave}: ${String(error)}`,
+      );
+    }
+  }
+
   async restaurar(
     informeId: string,
     evidenciaId: string,
