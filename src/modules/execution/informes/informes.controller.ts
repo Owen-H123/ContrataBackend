@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -106,6 +107,17 @@ export class InformesController {
     @CurrentUser() usuario: UsuarioAutenticado,
   ) {
     return this.informes.reabrir(id, dto, usuario);
+  }
+
+  /** Elimina un informe creado por error. 409 si ya tiene fotos. */
+  @Roles(Rol.ADMIN)
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  eliminar(
+    @Param('id', { schema: idSchema }) id: string,
+    @CurrentUser() usuario: UsuarioAutenticado,
+  ) {
+    return this.informes.eliminar(id, usuario);
   }
 
   /** Agrega un ítem en el sitio del informe; los técnicos lo ven al instante. */
