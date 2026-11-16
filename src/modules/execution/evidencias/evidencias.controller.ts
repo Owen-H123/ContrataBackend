@@ -78,6 +78,18 @@ export class EvidenciasController {
     return this.evidencias.ocultar(id, evidenciaId, usuario);
   }
 
+  /** Borra para siempre una foto ya descartada, con su archivo (solo ADMIN). */
+  @Roles(Rol.ADMIN)
+  @Delete('evidencias/:evidenciaId/definitivo')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  eliminarDescartada(
+    @Param('id', { schema: idSchema }) id: string,
+    @Param('evidenciaId', { schema: idSchema }) evidenciaId: string,
+    @CurrentUser() usuario: UsuarioAutenticado,
+  ) {
+    return this.evidencias.eliminarDescartada(id, evidenciaId, usuario);
+  }
+
   /** Devuelve al informe una foto descartada (solo ADMIN). */
   @Roles(Rol.ADMIN)
   @Post('evidencias/:evidenciaId/restaurar')
