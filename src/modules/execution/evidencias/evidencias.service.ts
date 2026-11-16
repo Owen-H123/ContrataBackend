@@ -10,12 +10,15 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { ZipArchive } from 'archiver';
 import type { Response } from 'express';
-import { IsNull, Not, Repository } from 'typeorm';
+import { IsNull, MoreThan, Not, Repository } from 'typeorm';
 import type { UsuarioAutenticado } from '../../../core/auth/types/usuario-autenticado.js';
 import type { EtapaEvidencia } from '../../../shared/enums/etapa-evidencia.enum.js';
 import { Rol } from '../../../shared/enums/rol.enum.js';
+import { TipoNotificacion } from '../../core/notificaciones/entities/notificacion.entity.js';
+import { NotificacionesService } from '../../core/notificaciones/notificaciones.service.js';
 import { StorageService } from '../../../services/storage/storage.service.js';
 import type { ItemOrden } from '../../planning/ordenes-compra/entities/item-orden.entity.js';
+import { MAXIMO_FOTOS } from '../informes/completitud.js';
 import { InformesService } from '../informes/informes.service.js';
 import {
   type EditarEvidenciaDto,
@@ -64,6 +67,7 @@ export class EvidenciasService {
     private readonly evidencias: Repository<Evidencia>,
     private readonly informes: InformesService,
     private readonly storage: StorageService,
+    private readonly notificaciones: NotificacionesService,
   ) {}
 
   async solicitarSubida(
@@ -97,6 +101,8 @@ export class EvidenciasService {
       }
     }
 
+    await this.verificarCupo(informe.id, dto.tipo, itemId, etapa);
+
     const id = randomUUID();
     const clave = `informes/${informe.id}/${id}.${EXTENSIONES[dto.tipoContenido]}`;
     // Primero se firma: si R2 no está configurado, falla (503) sin dejar registros.
@@ -126,6 +132,38 @@ export class EvidenciasService {
         expiraEnSegundos: SEGUNDOS_SUBIDA,
       },
     };
+  }
+
+  /**
+   * Cada espacio (etapa de una actividad o grupo general) admite hasta MAXIMO_FOTOS
+   * fotos visibles. Cuentan las confirmadas y las subidas en curso (su enlace aún
+   * no vence), para que subir varias a la vez desde el celular tampoco pase del tope.
+   */
+  private async verificarCupo(
+    informeId: string,
+    tipo: TipoEvidencia,
+    itemId: string | null,
+    etapa: EtapaEvidencia | null,
+  ): Promise<void> {
+    const espacio = {
+      informeId,
+      tipo,
+      itemId: itemId ?? IsNull(),
+      etapa: etapa ?? IsNull(),
+      ocultaEn: IsNull(),
+    };
+    const enCurso = new Date(Date.now() - SEGUNDOS_SUBIDA * 1000);
+    const ocupadas = await this.evidencias.count({
+      where: [
+        { ...espacio, confirmada: true },
+        { ...espacio, confirmada: false, creadoEn: MoreThan(enCurso) },
+      ],
+    });
+    if (ocupadas >= MAXIMO_FOTOS) {
+      throw new ConflictException(
+        `Ya hay ${MAXIMO_FOTOS} fotos en este espacio, que es el máximo; descarta alguna para subir otra`,
+      );
+    }
   }
 
   /** Verifica en R2 que el archivo llegó; desde ahí la foto cuenta en el informe. */
@@ -186,6 +224,18 @@ export class EvidenciasService {
       ocultaEn: new Date(),
       ocultaPorId: usuario.id,
     });
+    // Si la descartó otra persona, el autor se entera; el texto lleva solo el sitio.
+    await this.notificaciones.avisar(
+      [evidencia.subidoPorId],
+      {
+        tipo: TipoNotificacion.FOTO_DESCARTADA,
+        titulo:
+          `Descartaron una de tus fotos: ${informe.sitio?.codigo ?? ''}`.trim(),
+        detalle: evidencia.comentario ?? informe.sitio?.nombre ?? null,
+        informeId: informe.id,
+      },
+      usuario.id,
+    );
   }
 
   /** Devuelve al informe una foto descartada (solo ADMIN). */
@@ -202,6 +252,12 @@ export class EvidenciasService {
       ocultaEn: Not(IsNull()),
     });
     if (!evidencia) throw new NotFoundException('La foto descartada no existe');
+    await this.verificarCupo(
+      informe.id,
+      evidencia.tipo,
+      evidencia.itemId,
+      evidencia.etapa,
+    );
     await this.evidencias.update(evidencia.id, {
       ocultaEn: null,
       ocultaPorId: null,

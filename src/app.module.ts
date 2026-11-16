@@ -8,6 +8,7 @@ import { envSchema } from './core/config/env.schema.js';
 import { DatabaseModule } from './core/database/database.module.js';
 import { AuthModule } from './core/auth/auth.module.js';
 import { HealthModule } from './modules/core/health/health.module.js';
+import { NotificacionesModule } from './modules/core/notificaciones/notificaciones.module.js';
 import { UsuariosModule } from './modules/core/usuarios/usuarios.module.js';
 import { MasterModule } from './modules/master/master.module.js';
 import { PlanningModule } from './modules/planning/planning.module.js';
@@ -21,6 +22,7 @@ import { StorageModule } from './services/storage/storage.module.js';
     StorageModule,
     AuthModule,
     UsuariosModule,
+    NotificacionesModule,
     HealthModule,
     MasterModule,
     PlanningModule,

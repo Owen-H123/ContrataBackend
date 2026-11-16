@@ -1332,5 +1332,102 @@ describe('API (e2e)', () => {
         .send({ decision: 'APROBAR' })
         .expect(404);
     });
+
+    it('cada espacio admite máximo 5 fotos; descartar una libera el cupo', async () => {
+      const visibles = async () =>
+        (await detalle()).estaciones as { id: string }[];
+      // El test anterior dejó el informe finalizado: se reabre para seguir subiendo.
+      await api()
+        .post(`${ruta()}/reabrir`)
+        .set(auth(adminToken))
+        .send({})
+        .expect(200);
+      // Llena el espacio hasta el tope, sea cual sea el punto de partida.
+      while ((await visibles()).length < 5) {
+        await subirFoto(tec1.token, { tipo: 'ESTACION' });
+      }
+      expect(await visibles()).toHaveLength(5);
+
+      const sexta = await api()
+        .post(`${ruta()}/evidencias`)
+        .set(auth(tec1.token))
+        .send(foto({ tipo: 'ESTACION' }))
+        .expect(409);
+      expect(sexta.body.message).toContain('máximo');
+
+      // Otro espacio no se ve afectado por el tope de este.
+      await subirFoto(tec1.token, {
+        tipo: 'ACTIVIDAD',
+        itemId: itemFotos,
+        etapa: 'FINALIZADO',
+      });
+
+      await api()
+        .delete(`${ruta()}/evidencias/${(await visibles())[0].id}`)
+        .set(auth(tec1.token))
+        .expect(204);
+      await subirFoto(tec1.token, { tipo: 'ESTACION' });
+      expect(await visibles()).toHaveLength(5);
+    });
+
+    it('los avisos llegan a quien corresponde y cada quien ve solo los suyos', async () => {
+      type Aviso = {
+        id: string;
+        tipo: string;
+        detalle: string | null;
+        informeId: string | null;
+        leida: boolean;
+      };
+      const lista = async (token: string) =>
+        (await api().get('/api/notificaciones').set(auth(token)).expect(200))
+          .body as Aviso[];
+      const sinLeer = async (token: string) =>
+        (
+          await api()
+            .get('/api/notificaciones/sin-leer')
+            .set(auth(token))
+            .expect(200)
+        ).body.total as number;
+
+      // El técnico se entera de que le asignaron el informe y de que se reabrió.
+      const deTecnico = await lista(tec1.token);
+      const tipos = deTecnico.map((a) => a.tipo);
+      expect(tipos).toContain('INFORME_ASIGNADO');
+      expect(tipos).toContain('INFORME_REABIERTO');
+      // Nunca ve la orden de compra en sus avisos.
+      expect(JSON.stringify(deTecnico)).not.toContain('OC ');
+
+      // Administradores y supervisores se enteran de lo que finalizó el técnico.
+      for (const token of [adminToken, supervisorToken]) {
+        const avisos = await lista(token);
+        expect(
+          avisos.some(
+            (a) => a.tipo === 'INFORME_FINALIZADO' && a.informeId === informeId,
+          ),
+        ).toBe(true);
+      }
+      // Quien hizo la acción no se avisa a sí mismo: el administrador reabrió, no recibe el aviso de reapertura.
+      expect(
+        (await lista(adminToken)).some((a) => a.tipo === 'INFORME_REABIERTO'),
+      ).toBe(false);
+
+      // Leer: uno solo, solo el dueño, y todos de una vez.
+      expect(await sinLeer(tec1.token)).toBeGreaterThan(0);
+      const propio = deTecnico.find((a) => !a.leida)!;
+      await api()
+        .post(`/api/notificaciones/${propio.id}/leer`)
+        .set(auth(tec2.token))
+        .expect(404);
+      await api()
+        .post(`/api/notificaciones/${propio.id}/leer`)
+        .set(auth(tec1.token))
+        .expect(204);
+      await api()
+        .post('/api/notificaciones/leer-todas')
+        .set(auth(tec1.token))
+        .expect(204);
+      expect(await sinLeer(tec1.token)).toBe(0);
+      await api().get('/api/notificaciones').expect(401);
+    });
   });
 });

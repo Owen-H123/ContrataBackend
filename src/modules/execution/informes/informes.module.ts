@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { NotificacionesModule } from '../../core/notificaciones/notificaciones.module.js';
 import { UsuariosModule } from '../../core/usuarios/usuarios.module.js';
 import { ItemOrden } from '../../planning/ordenes-compra/entities/item-orden.entity.js';
 import { OrdenesCompraModule } from '../../planning/ordenes-compra/ordenes-compra.module.js';
@@ -14,6 +15,7 @@ import { InformesService } from './informes.service.js';
     TypeOrmModule.forFeature([Informe, ItemOrden, Evidencia, RevisionInforme]),
     OrdenesCompraModule,
     UsuariosModule,
+    NotificacionesModule,
   ],
   controllers: [InformesController],
   providers: [InformesService],

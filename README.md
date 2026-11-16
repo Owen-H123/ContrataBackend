@@ -121,7 +121,7 @@ Todas bajo `/api`. Las de consulta piden sesión; las de escritura, el rol indic
 
 - Cada ítem es una línea de la orden: posición, sitio, código de material, descripción, cantidad, unidad, precio y fecha de entrega.
 - El sitio de cada ítem debe ser del mismo cliente que la orden; así una orden puede cubrir uno o varios sitios.
-- `etapas` indica qué fotos exige el ítem: por omisión `["ANTES","PROCESO","DESPUES"]`; `[]` para líneas sin fotos, como el transporte.
+- `etapas` indica qué fotos exige el ítem: por omisión `["ANTES","DURANTE","FINALIZADO"]`; `[]` para líneas sin fotos, como el transporte.
 - Si no se indica la posición, se numera de 10 en 10 después de la mayor (10, 20, 30…).
 - El monto de cada ítem y el subtotal se calculan, no se guardan; el subtotal no incluye impuestos.
 
@@ -132,7 +132,7 @@ Contrata es la herramienta donde los **técnicos suben las fotos**. La aprobaci�
 1. **Estado del sitio (al llegar a la estación):** 2 fotos `PANORAMICA` de la torre completa y 2 `ESTACION` de las estaciones y equipos.
 2. **Ubicación:** coordenadas por GPS o con un link de Google Maps (también links cortos `maps.app.goo.gl`).
 3. **EPP:** 2 fotos `EPP` (el técnico que aparece en la foto es opcional).
-4. **Ejecución:** fotos de cada ítem de la orden en sus etapas `ANTES`, `DURANTE` y `FINALIZADO`. No hay tope: cuantas más fotos, mejor.
+4. **Ejecución:** fotos de cada ítem de la orden en sus etapas `ANTES`, `DURANTE` y `FINALIZADO`. Máximo 5 fotos por espacio (cada etapa de una actividad, y cada grupo de panorámicas, estaciones y EPP); para subir otra hay que descartar una.
 5. **Ítems nuevos:** Samira puede agregar ítems (`POST /informes/:id/actividades`) mientras la ejecución esté abierta; a los técnicos les aparecen al instante.
 6. **Finalizar:** el técnico da por terminada la ejecución cuando el informe está completo. Samira puede reabrirla.
 7. **Revisión interna:** Samira descarta las fotos que sobran (se ocultan, no se borran, y se pueden restaurar) y descarga el ZIP en orden.

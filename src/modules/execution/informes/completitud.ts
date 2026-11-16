@@ -8,6 +8,9 @@ export const MINIMO = {
   EPP: 2,
 } as const;
 
+/** Tope de fotos visibles por espacio: cada etapa de una actividad y cada grupo general. */
+export const MAXIMO_FOTOS = 5;
+
 export interface RequisitosInforme {
   tecnicos: { id: string; nombre: string }[];
   tieneUbicacion: boolean;

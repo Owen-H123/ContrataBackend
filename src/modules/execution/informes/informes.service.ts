@@ -14,6 +14,8 @@ import {
 } from '../../../shared/enums/etapa-evidencia.enum.js';
 import { Rol } from '../../../shared/enums/rol.enum.js';
 import { StorageService } from '../../../services/storage/storage.service.js';
+import { TipoNotificacion } from '../../core/notificaciones/entities/notificacion.entity.js';
+import { NotificacionesService } from '../../core/notificaciones/notificaciones.service.js';
 import { UsuariosService } from '../../core/usuarios/usuarios.service.js';
 import { ItemOrden } from '../../planning/ordenes-compra/entities/item-orden.entity.js';
 import { EstadoOrden } from '../../planning/ordenes-compra/entities/orden-compra.entity.js';
@@ -134,6 +136,7 @@ export class InformesService {
     private readonly ordenes: OrdenesCompraService,
     private readonly usuarios: UsuariosService,
     private readonly storage: StorageService,
+    private readonly notificaciones: NotificacionesService,
   ) {}
 
   /** ADMIN y SUPERVISOR ven todos; un TECNICO, solo los que tiene asignados. */
@@ -279,7 +282,13 @@ export class InformesService {
         tecnicos,
       }),
     );
-    return this.obtener(id, usuario);
+    const detalle = await this.obtener(id, usuario);
+    await this.avisarAsignacion(
+      detalle,
+      tecnicos.map((t) => t.id),
+      usuario,
+    );
+    return detalle;
   }
 
   /** Reemplaza la lista de técnicos asignados. */
@@ -294,11 +303,19 @@ export class InformesService {
         'La ejecución ya está finalizada; reábrela para cambiar los técnicos',
       );
     }
+    const anteriores = new Set((informe.tecnicos ?? []).map((t) => t.id));
     informe.tecnicos = await this.usuarios.exigirTecnicosActivos(
       dto.tecnicoIds,
     );
     await this.informes.save(informe);
-    return this.obtener(id, usuario);
+    const detalle = await this.obtener(id, usuario);
+    // Solo se avisa a quienes se suman ahora, no a los que ya estaban.
+    await this.avisarAsignacion(
+      detalle,
+      informe.tecnicos.map((t) => t.id).filter((t) => !anteriores.has(t)),
+      usuario,
+    );
+    return detalle;
   }
 
   /**
@@ -344,7 +361,20 @@ export class InformesService {
       null,
       usuario,
     );
-    return this.obtener(id, usuario);
+    const detalle = await this.obtener(id, usuario);
+    await this.notificaciones.avisar(
+      await this.notificaciones.idsConRol(Rol.ADMIN, Rol.SUPERVISOR),
+      {
+        tipo: TipoNotificacion.INFORME_FINALIZADO,
+        titulo: `Listo para revisar: ${detalle.sitio.codigo}`,
+        detalle: detalle.orden
+          ? `${detalle.sitio.nombre} · OC ${detalle.orden.numero} · finalizó ${usuario.nombre}`
+          : detalle.sitio.nombre,
+        informeId: detalle.id,
+      },
+      usuario.id,
+    );
+    return detalle;
   }
 
   /** Vuelve a abrir la ejecución para seguir cargando fotos o ítems. */
@@ -364,7 +394,19 @@ export class InformesService {
       dto.comentario ?? null,
       usuario,
     );
-    return this.obtener(id, usuario);
+    const detalle = await this.obtener(id, usuario);
+    // Los técnicos solo ven el sitio, nunca la orden de compra.
+    await this.notificaciones.avisar(
+      detalle.tecnicos.map((t) => t.id),
+      {
+        tipo: TipoNotificacion.INFORME_REABIERTO,
+        titulo: `Informe reabierto: ${detalle.sitio.codigo}`,
+        detalle: dto.comentario ?? detalle.sitio.nombre,
+        informeId: detalle.id,
+      },
+      usuario.id,
+    );
+    return detalle;
   }
 
   /**
@@ -442,6 +484,24 @@ export class InformesService {
       relations: { tecnico: true, subidoPor: true },
       order: { creadoEn: 'ASC' },
     });
+  }
+
+  /** Avisa a los técnicos que se suman a un informe; el texto lleva solo el sitio. */
+  private avisarAsignacion(
+    informe: InformeDetalle,
+    tecnicoIds: string[],
+    usuario: UsuarioAutenticado,
+  ): Promise<void> {
+    return this.notificaciones.avisar(
+      tecnicoIds,
+      {
+        tipo: TipoNotificacion.INFORME_ASIGNADO,
+        titulo: `Te asignaron un informe: ${informe.sitio.codigo}`,
+        detalle: informe.sitio.nombre,
+        informeId: informe.id,
+      },
+      usuario.id,
+    );
   }
 
   /** Cambia el estado y deja constancia en el historial, en una sola transacción. */

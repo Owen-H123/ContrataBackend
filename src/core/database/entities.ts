@@ -1,4 +1,5 @@
 import { Usuario } from '../../modules/core/usuarios/entities/usuario.entity.js';
+import { Notificacion } from '../../modules/core/notificaciones/entities/notificacion.entity.js';
 import { Cliente } from '../../modules/master/clientes/entities/cliente.entity.js';
 import { Sitio } from '../../modules/master/sitios/entities/sitio.entity.js';
 import { ItemOrden } from '../../modules/planning/ordenes-compra/entities/item-orden.entity.js';
@@ -13,6 +14,7 @@ import { Evidencia } from '../../modules/execution/evidencias/entities/evidencia
  */
 export const entities = [
   Usuario,
+  Notificacion,
   Cliente,
   Sitio,
   OrdenCompra,
