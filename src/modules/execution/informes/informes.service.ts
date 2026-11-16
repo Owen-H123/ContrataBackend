@@ -436,9 +436,10 @@ export class InformesService {
    */
   async eliminar(id: string, usuario: UsuarioAutenticado): Promise<void> {
     const informe = await this.buscarParaVer(id, usuario);
+    // Cuentan las confirmadas (visibles o descartadas); las no confirmadas son
+    // reservas de subidas que nunca llegaron y se limpian abajo.
     const fotos = await this.evidencias.count({
-      where: { informeId: informe.id },
-      withDeleted: true,
+      where: { informeId: informe.id, confirmada: true },
     });
     if (fotos > 0) {
       throw new ConflictException(
@@ -447,6 +448,7 @@ export class InformesService {
     }
     await this.informes.manager.transaction(async (em) => {
       await em.delete(Notificacion, { informeId: informe.id });
+      await em.delete(Evidencia, { informeId: informe.id, confirmada: false });
       await em.delete(Informe, informe.id);
     });
   }

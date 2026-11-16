@@ -220,6 +220,12 @@ export class EvidenciasService {
         ? await this.informes.buscarParaVer(informeId, usuario)
         : await this.informes.buscarParaEditar(informeId, usuario);
     const evidencia = await this.buscarPropia(informe.id, evidenciaId, usuario);
+    // Sin confirmar es solo una reserva de cupo (la subida falló o se abandonó):
+    // se borra para liberar el espacio al instante. No es evidencia ni avisa a nadie.
+    if (!evidencia.confirmada) {
+      await this.evidencias.delete(evidencia.id);
+      return;
+    }
     await this.evidencias.update(evidencia.id, {
       ocultaEn: new Date(),
       ocultaPorId: usuario.id,
