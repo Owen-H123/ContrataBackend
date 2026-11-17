@@ -135,9 +135,10 @@ export class EvidenciasService {
   }
 
   /**
-   * Cada espacio (etapa de una actividad o grupo general) admite hasta MAXIMO_FOTOS
-   * fotos visibles. Cuentan las confirmadas y las subidas en curso (su enlace aún
-   * no vence), para que subir varias a la vez desde el celular tampoco pase del tope.
+   * Cada grupo general (panorámicas, estaciones, EPP) admite hasta MAXIMO_FOTOS
+   * fotos visibles. Las etapas de los ítems (ACTIVIDAD) no tienen tope.
+   * Cuentan las confirmadas y las subidas en curso (su enlace aún no vence),
+   * para que subir varias a la vez desde el celular tampoco pase del tope.
    */
   private async verificarCupo(
     informeId: string,
@@ -145,6 +146,7 @@ export class EvidenciasService {
     itemId: string | null,
     etapa: EtapaEvidencia | null,
   ): Promise<void> {
+    if (tipo === TipoEvidencia.ACTIVIDAD) return;
     const espacio = {
       informeId,
       tipo,
