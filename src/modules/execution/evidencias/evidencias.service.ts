@@ -312,7 +312,7 @@ export class EvidenciasService {
     const nombre = limpiar(
       usuario.rol === Rol.TECNICO
         ? `Informe ${informe.sitio!.codigo}`
-        : `Informe ${informe.sitio!.codigo} OC ${informe.orden!.numero}`,
+        : `Informe ${informe.sitio!.codigo} ${informe.orden!.numero ? `OC ${informe.orden!.numero}` : 'Orden pendiente'}`,
     );
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader(

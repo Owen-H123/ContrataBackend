@@ -23,9 +23,12 @@ export enum EstadoOrden {
 @Entity('ordenes_compra')
 @Unique(['clienteId', 'numero'])
 export class OrdenCompra extends EntidadBase {
-  /** Número tal como figura en el documento del cliente. Único por cliente. */
-  @Column({ type: 'varchar', length: 20 })
-  numero: string;
+  /**
+   * Número tal como figura en el documento del cliente. Único por cliente.
+   * null = «Orden pendiente»: la orden llegó sin número y se completa al editarla.
+   */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  numero: string | null;
 
   @Column({ name: 'cliente_id', type: 'uuid' })
   clienteId: string;

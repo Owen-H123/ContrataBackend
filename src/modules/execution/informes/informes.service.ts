@@ -82,7 +82,8 @@ interface CabeceraInforme {
   /** Datos comerciales de la orden. No se entregan a un TECNICO: solo ve el sitio. */
   orden?: {
     id: string;
-    numero: string;
+    /** null = «Orden pendiente». */
+    numero: string | null;
     fechaEmision: string;
     estado: EstadoOrden;
     cliente: { id: string; razonSocial: string };
@@ -371,7 +372,7 @@ export class InformesService {
         tipo: TipoNotificacion.INFORME_FINALIZADO,
         titulo: `Listo para revisar: ${detalle.sitio.codigo}`,
         detalle: detalle.orden
-          ? `${detalle.sitio.nombre} · OC ${detalle.orden.numero} · finalizó ${usuario.nombre}`
+          ? `${detalle.sitio.nombre} · ${detalle.orden.numero ? `OC ${detalle.orden.numero}` : 'Orden pendiente'} · finalizó ${usuario.nombre}`
           : detalle.sitio.nombre,
         informeId: detalle.id,
       },
