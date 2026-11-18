@@ -46,7 +46,8 @@ const observaciones = z.string().trim().max(500).nullable();
 
 export const crearOrdenSchema = z
   .object({
-    numero,
+    // Opcional: sin número la orden queda como «Orden pendiente».
+    numero: numero.nullable().optional(),
     clienteId: z.uuid('El cliente no es válido'),
     fechaEmision: fecha,
     moneda: moneda.optional(),
@@ -65,7 +66,7 @@ export type CrearOrdenDto = z.infer<typeof crearOrdenSchema>;
 /** El cliente no se cambia: los sitios de los ítems dependen de él. */
 export const actualizarOrdenSchema = z
   .object({
-    numero,
+    numero: numero.nullable(),
     fechaEmision: fecha,
     moneda,
     observaciones,

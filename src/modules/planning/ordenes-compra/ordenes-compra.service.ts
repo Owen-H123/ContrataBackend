@@ -54,7 +54,7 @@ export class OrdenesCompraService {
       .leftJoinAndSelect('o.cliente', 'c')
       .leftJoinAndSelect('o.items', 'i')
       .orderBy('o.fechaEmision', 'DESC')
-      .addOrderBy('o.numero', 'DESC');
+      .addOrderBy('o.numero', 'DESC', 'NULLS LAST');
 
     if (filtros.clienteId) {
       qb.andWhere('o.clienteId = :clienteId', { clienteId: filtros.clienteId });
@@ -102,7 +102,7 @@ export class OrdenesCompraService {
     if (!cliente.activo) {
       throw new ConflictException('El cliente está desactivado');
     }
-    await this.exigirNumeroLibre(dto.clienteId, dto.numero);
+    if (dto.numero) await this.exigirNumeroLibre(dto.clienteId, dto.numero);
     await this.sitios.exigirDelCliente(
       dto.items.map((i) => i.sitioId),
       dto.clienteId,
@@ -111,7 +111,7 @@ export class OrdenesCompraService {
     const posiciones = asignarPosiciones(dto.items, 0);
     const { id } = await this.ordenes.save(
       this.ordenes.create({
-        numero: dto.numero,
+        numero: dto.numero ?? null,
         clienteId: dto.clienteId,
         fechaEmision: dto.fechaEmision,
         moneda: dto.moneda ?? 'PEN',
