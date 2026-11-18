@@ -35,6 +35,13 @@ import {
 /** Minutos que dura el enlace de subida (debe coincidir con StorageService). */
 const SEGUNDOS_SUBIDA = 15 * 60;
 
+/** Grupos de fotos sin límite de cantidad; el resto respeta MAXIMO_FOTOS. */
+const SIN_TOPE = new Set<TipoEvidencia>([
+  TipoEvidencia.ACTIVIDAD,
+  TipoEvidencia.PANORAMICA,
+  TipoEvidencia.ESTACION,
+]);
+
 const CARPETA_ETAPA: Record<EtapaEvidencia, string> = {
   ANTES: 'Antes',
   DURANTE: 'Durante',
@@ -135,8 +142,8 @@ export class EvidenciasService {
   }
 
   /**
-   * Cada grupo general (panorámicas, estaciones, EPP) admite hasta MAXIMO_FOTOS
-   * fotos visibles. Las etapas de los ítems (ACTIVIDAD) no tienen tope.
+   * Solo las fotos de EPP tienen tope (MAXIMO_FOTOS visibles). Panorámicas, estaciones
+   * y las etapas de los ítems no tienen límite.
    * Cuentan las confirmadas y las subidas en curso (su enlace aún no vence),
    * para que subir varias a la vez desde el celular tampoco pase del tope.
    */
@@ -146,7 +153,7 @@ export class EvidenciasService {
     itemId: string | null,
     etapa: EtapaEvidencia | null,
   ): Promise<void> {
-    if (tipo === TipoEvidencia.ACTIVIDAD) return;
+    if (SIN_TOPE.has(tipo)) return;
     const espacio = {
       informeId,
       tipo,

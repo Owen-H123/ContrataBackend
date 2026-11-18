@@ -8,7 +8,7 @@ export const MINIMO = {
   EPP: 2,
 } as const;
 
-/** Tope de fotos visibles en cada grupo general; las etapas de los ítems no tienen tope. */
+/** Tope de fotos visibles de EPP; panorámicas, estaciones e ítems no tienen tope. */
 export const MAXIMO_FOTOS = 5;
 
 export interface RequisitosInforme {
