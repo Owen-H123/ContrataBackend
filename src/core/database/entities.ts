@@ -7,6 +7,9 @@ import { OrdenCompra } from '../../modules/planning/ordenes-compra/entities/orde
 import { Informe } from '../../modules/execution/informes/entities/informe.entity.js';
 import { RevisionInforme } from '../../modules/execution/informes/entities/revision-informe.entity.js';
 import { Evidencia } from '../../modules/execution/evidencias/entities/evidencia.entity.js';
+import { VisitaTecnica } from '../../modules/execution/visitas/entities/visita-tecnica.entity.js';
+import { FotoVisita } from '../../modules/execution/visitas/entities/foto-visita.entity.js';
+import { ComentarioVisita } from '../../modules/execution/visitas/entities/comentario-visita.entity.js';
 
 /**
  * Lista única de entidades. La usan la aplicación y la línea de comandos de
@@ -22,4 +25,7 @@ export const entities = [
   Informe,
   RevisionInforme,
   Evidencia,
+  VisitaTecnica,
+  FotoVisita,
+  ComentarioVisita,
 ];
