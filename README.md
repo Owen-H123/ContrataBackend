@@ -115,6 +115,16 @@ Todas bajo `/api`. Las de consulta piden sesión; las de escritura, el rol indic
 | `POST /informes/:id/evidencias/:evidenciaId/restaurar` | ADMIN | Devuelve al informe una foto descartada |
 | `GET /informes/:id/evidencias/:evidenciaId/descarga` | Quien ve el informe | Enlace para descargar la foto con su nombre original |
 | `GET /informes/:id/fotos.zip` | Quien ve el informe | Todas las fotos en un ZIP con carpetas y números de secuencia (las descartadas no salen) |
+| `GET /visitas?estado=&q=` | Todos (TECNICO: solo las suyas) | Visitas técnicas, con la cantidad de fotos |
+| `GET /visitas/opciones` | ADMIN, TECNICO | Órdenes ABIERTAS con sus sitios, para registrar una visita (sin montos) |
+| `GET /visitas/:id` | Quien ve la visita | Visita con ubicación, fotos, comentarios y `faltantes` |
+| `POST /visitas` | ADMIN, TECNICO | Registra la visita: `ordenId`, `sitioId`, `fecha`, `motivo`, `observaciones`. Queda a nombre de quien la registra |
+| `PATCH /visitas/:id`, `PATCH /visitas/:id/ubicacion` | Técnico de la visita o ADMIN | Corrige los datos o guarda la ubicación (solo EN_CURSO) |
+| `POST /visitas/:id/fotos`, `POST …/fotos/:fotoId/confirmar` | Técnico de la visita o ADMIN | Sube una foto en dos pasos, igual que las evidencias (máx. 40 por visita) |
+| `PATCH·DELETE /visitas/:id/fotos/:fotoId` | Autor o ADMIN | Cambia el comentario o quita la foto (borra registro y archivo) |
+| `POST /visitas/:id/comentarios` | Técnico de la visita o ADMIN | Agrega un comentario; avisa a la otra parte |
+| `POST /visitas/:id/finalizar` | Técnico de la visita o ADMIN | La da por terminada (409 si falta la ubicación o fotos); avisa a ADMIN y SUPERVISOR |
+| `POST /visitas/:id/reabrir`, `DELETE /visitas/:id` | ADMIN | Reabre (con comentario opcional, avisa al técnico) o elimina la visita |
 | `GET /health` | Pública | Estado del servidor y de la base |
 
 ### Órdenes de compra
@@ -141,6 +151,14 @@ Contrata es la herramienta donde los **técnicos suben las fotos**. La aprobaci�
 - Un técnico que no está asignado recibe 404 y nunca ve precios.
 - `GET /informes/:id` trae las actividades con sus fotos por etapa, `panoramicas`, `estaciones`, `epp`, `descartadas` (solo ADMIN y SUPERVISOR), el `progreso` (`completo`, `porcentaje`, `faltantes`) y el `historial`.
 - El ZIP lleva números para que, ordenado por nombre, quede en secuencia: `1 Estado del sitio/…`, `2 EPP/…`, `3 Ejecución/010 <ítem>/1 Antes/001.jpg`.
+
+### Visitas técnicas
+
+A diferencia del informe (que abre el admin), la **visita técnica la registra el propio técnico**: elige una orden ABIERTA y uno de sus sitios, la fecha y el motivo (`INSPECCION`, `LEVANTAMIENTO`, `MANTENIMIENTO_PREVENTIVO`, `MANTENIMIENTO_CORRECTIVO`, `EMERGENCIA`, `OTRO`), y luego agrega observaciones, ubicación, fotos y comentarios.
+
+- Estados: `EN_CURSO` y `FINALIZADA`. Para finalizar hace falta la ubicación y al menos una foto.
+- Un técnico solo ve las suyas (otra visita le da 404); ADMIN y SUPERVISOR ven todas. SUPERVISOR solo consulta.
+- Los comentarios guardan también la constancia de cada finalización y reapertura.
 
 ### Fotos
 
