@@ -11,6 +11,12 @@ export enum TipoNotificacion {
   INFORME_REABIERTO = 'INFORME_REABIERTO',
   /** Al autor: un administrador descartó una de sus fotos. */
   FOTO_DESCARTADA = 'FOTO_DESCARTADA',
+  /** A administradores y supervisores: un técnico finalizó una visita técnica. */
+  VISITA_FINALIZADA = 'VISITA_FINALIZADA',
+  /** Al técnico: el admin reabrió su visita técnica. */
+  VISITA_REABIERTA = 'VISITA_REABIERTA',
+  /** Comentario nuevo en una visita técnica (al técnico o a los admin). */
+  VISITA_COMENTARIO = 'VISITA_COMENTARIO',
 }
 
 /**
@@ -39,6 +45,10 @@ export class Notificacion extends EntidadBase {
   /** Informe al que lleva el aviso; no es una relación para no atar el historial a él. */
   @Column({ name: 'informe_id', type: 'uuid', nullable: true })
   informeId: string | null;
+
+  /** Visita técnica a la que lleva el aviso (en vez de un informe). */
+  @Column({ name: 'visita_id', type: 'uuid', nullable: true })
+  visitaId: string | null;
 
   /** null mientras no se lee. */
   @Column({ name: 'leida_en', type: 'timestamptz', nullable: true })
