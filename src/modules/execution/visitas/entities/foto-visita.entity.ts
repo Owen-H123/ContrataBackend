@@ -1,7 +1,20 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
 import { EntidadBase } from '../../../../shared/entities/base.entity.js';
 import { Usuario } from '../../../core/usuarios/entities/usuario.entity.js';
+import { HallazgoVisita } from './hallazgo-visita.entity.js';
 import { VisitaTecnica } from './visita-tecnica.entity.js';
+
+/** A qué parte de la visita pertenece la foto. */
+export enum SeccionFotoVisita {
+  /** Personal con su equipo de protección personal. */
+  EPP = 'EPP',
+  /** Fachada de la vivienda o de la estación. */
+  FACHADA = 'FACHADA',
+  /** Croquis con las medidas (dibujo a mano fotografiado). */
+  CROQUIS = 'CROQUIS',
+  /** Foto de un hallazgo (va con `hallazgoId`). */
+  HALLAZGO = 'HALLAZGO',
+}
 
 /**
  * Foto de una visita técnica. Como en los informes, el archivo vive en el almacenamiento
@@ -16,6 +29,18 @@ export class FotoVisita extends EntidadBase {
   @ManyToOne(() => VisitaTecnica, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'visita_id' })
   visita?: VisitaTecnica;
+
+  @Column({ type: 'enum', enum: SeccionFotoVisita })
+  seccion: SeccionFotoVisita;
+
+  /** Hallazgo al que pertenece (solo sección HALLAZGO). */
+  @Index()
+  @Column({ name: 'hallazgo_id', type: 'uuid', nullable: true })
+  hallazgoId: string | null;
+
+  @ManyToOne(() => HallazgoVisita, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'hallazgo_id' })
+  hallazgo?: HallazgoVisita | null;
 
   /** Ruta del archivo dentro del almacenamiento. */
   @Column({ type: 'varchar', length: 300, unique: true })

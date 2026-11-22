@@ -2,40 +2,24 @@ import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
 import { EntidadBase } from '../../../../shared/entities/base.entity.js';
 import { Usuario } from '../../../core/usuarios/entities/usuario.entity.js';
 import { Sitio } from '../../../master/sitios/entities/sitio.entity.js';
-import { OrdenCompra } from '../../../planning/ordenes-compra/entities/orden-compra.entity.js';
 
 export enum EstadoVisita {
-  /** El técnico está registrando la visita: puede editar, subir fotos y comentar. */
-  EN_CURSO = 'EN_CURSO',
-  /** El técnico la terminó; se avisa al admin, que puede reabrirla. */
-  FINALIZADA = 'FINALIZADA',
-}
-
-/** Para qué fue el técnico al sitio. */
-export enum MotivoVisita {
-  INSPECCION = 'INSPECCION',
-  LEVANTAMIENTO = 'LEVANTAMIENTO',
-  MANTENIMIENTO_PREVENTIVO = 'MANTENIMIENTO_PREVENTIVO',
-  MANTENIMIENTO_CORRECTIVO = 'MANTENIMIENTO_CORRECTIVO',
-  EMERGENCIA = 'EMERGENCIA',
-  OTRO = 'OTRO',
+  /** Registrada, todavía no se fue al sitio. */
+  PENDIENTE = 'PENDIENTE',
+  /** El técnico ya visitó el sitio. */
+  VISITADO = 'VISITADO',
+  /** No dejaron entrar al sitio. */
+  ACCESO_RECHAZADO = 'ACCESO_RECHAZADO',
 }
 
 /**
- * Visita técnica: la registra el propio técnico (a diferencia del informe, que abre el admin).
- * Va asociada a una orden de compra y a un sitio de esa orden; lleva fecha, motivo,
- * observaciones, ubicación, fotos y comentarios.
+ * Visita técnica: inspección de un sitio ANTES de cualquier trabajo, sin orden de compra.
+ * La registra el propio técnico (el sitio puede ser uno existente o uno nuevo). Lleva fotos
+ * fijas (EPP, fachada, croquis) y los hallazgos que el técnico va agregando, cada uno con
+ * sus fotos, el posible correctivo y las medidas, para que el área de presupuestos cotice.
  */
 @Entity('visitas_tecnicas')
 export class VisitaTecnica extends EntidadBase {
-  @Index()
-  @Column({ name: 'orden_id', type: 'uuid' })
-  ordenId: string;
-
-  @ManyToOne(() => OrdenCompra, { onDelete: 'RESTRICT' })
-  @JoinColumn({ name: 'orden_id' })
-  orden?: OrdenCompra;
-
   @Index()
   @Column({ name: 'sitio_id', type: 'uuid' })
   sitioId: string;
@@ -44,7 +28,7 @@ export class VisitaTecnica extends EntidadBase {
   @JoinColumn({ name: 'sitio_id' })
   sitio?: Sitio;
 
-  /** Técnico que hizo la visita (quien la registró). Solo él y los ADMIN la editan. */
+  /** Técnico que hace la visita (quien la registró). Solo él y los ADMIN la editan. */
   @Index()
   @Column({ name: 'tecnico_id', type: 'uuid' })
   tecnicoId: string;
@@ -57,15 +41,16 @@ export class VisitaTecnica extends EntidadBase {
   @Column({ type: 'date' })
   fecha: string;
 
-  @Column({ type: 'enum', enum: MotivoVisita })
-  motivo: MotivoVisita;
+  @Column({
+    type: 'enum',
+    enum: EstadoVisita,
+    default: EstadoVisita.PENDIENTE,
+  })
+  estado: EstadoVisita;
 
-  /** Lo que encontró o hizo el técnico. */
+  /** Notas generales de la visita. */
   @Column({ type: 'varchar', length: 2000, nullable: true })
   observaciones: string | null;
-
-  @Column({ type: 'enum', enum: EstadoVisita, default: EstadoVisita.EN_CURSO })
-  estado: EstadoVisita;
 
   @Column({ type: 'double precision', nullable: true })
   latitud: number | null;

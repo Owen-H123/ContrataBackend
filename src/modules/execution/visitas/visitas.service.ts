@@ -5,8 +5,11 @@ import {
   Injectable,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
+import { ZipArchive } from 'archiver';
+import type { Response } from 'express';
 import { Repository } from 'typeorm';
 import type { UsuarioAutenticado } from '../../../core/auth/types/usuario-autenticado.js';
 import { escaparLike } from '../../../shared/database/escapar-like.js';
@@ -14,38 +17,46 @@ import { Rol } from '../../../shared/enums/rol.enum.js';
 import { StorageService } from '../../../services/storage/storage.service.js';
 import { TipoNotificacion } from '../../core/notificaciones/entities/notificacion.entity.js';
 import { NotificacionesService } from '../../core/notificaciones/notificaciones.service.js';
-import {
-  EstadoOrden,
-  OrdenCompra,
-} from '../../planning/ordenes-compra/entities/orden-compra.entity.js';
+import { Cliente } from '../../master/clientes/entities/cliente.entity.js';
+import { Sitio } from '../../master/sitios/entities/sitio.entity.js';
 import { EXTENSIONES, MAX_BYTES } from '../evidencias/dto/evidencia.schema.js';
 import { coordenadasDeEnlace } from '../informes/enlace-maps.js';
 import type {
+  CambiarEstadoVisitaDto,
   ComentarVisitaDto,
+  CrearHallazgoDto,
   CrearVisitaDto,
   EditarFotoVisitaDto,
+  EditarHallazgoDto,
   EditarVisitaDto,
   FiltrosVisitaDto,
-  ReabrirVisitaDto,
   SubirFotoVisitaDto,
   UbicacionDto,
 } from './dto/visita.schema.js';
+import { ComentarioVisita } from './entities/comentario-visita.entity.js';
 import {
-  ComentarioVisita,
-  TipoComentarioVisita,
-} from './entities/comentario-visita.entity.js';
-import { FotoVisita } from './entities/foto-visita.entity.js';
+  FotoVisita,
+  SeccionFotoVisita,
+} from './entities/foto-visita.entity.js';
+import { HallazgoVisita } from './entities/hallazgo-visita.entity.js';
 import {
   EstadoVisita,
-  type MotivoVisita,
   VisitaTecnica,
 } from './entities/visita-tecnica.entity.js';
 
-/** Fotos que admite una visita. */
-export const MAX_FOTOS_VISITA = 40;
+/** Fotos que admite cada sección fija y cada hallazgo. */
+export const MAX_FOTOS_GRUPO = 20;
+/** Hallazgos que admite una visita. */
+export const MAX_HALLAZGOS = 50;
 const SEGUNDOS_SUBIDA = 15 * 60;
 
-export interface PersonaDto {
+const NOMBRE_ESTADO: Record<EstadoVisita, string> = {
+  PENDIENTE: 'pendiente de visitar',
+  VISITADO: 'visitado',
+  ACCESO_RECHAZADO: 'acceso rechazado',
+};
+
+interface PersonaDto {
   id: string;
   nombre: string;
 }
@@ -54,22 +65,23 @@ export interface VisitaResumen {
   id: string;
   estado: EstadoVisita;
   fecha: string;
-  motivo: MotivoVisita;
   creadoEn: Date;
   actualizadoEn: Date;
-  /** Solo número y cliente: nunca montos. */
-  orden: {
+  sitio: {
     id: string;
-    numero: string | null;
+    codigo: string;
+    nombre: string;
     cliente: { id: string; razonSocial: string };
   };
-  sitio: { id: string; codigo: string; nombre: string };
   tecnico: PersonaDto;
+  cantidadHallazgos: number;
   cantidadFotos: number;
 }
 
 export interface FotoVisitaDto {
   id: string;
+  seccion: SeccionFotoVisita;
+  hallazgoId: string | null;
   nombreArchivo: string;
   comentario: string | null;
   tomadaEn: Date | null;
@@ -79,29 +91,46 @@ export interface FotoVisitaDto {
   url: string | null;
 }
 
+export interface HallazgoDto {
+  id: string;
+  posicion: number;
+  descripcion: string;
+  correctivo: string | null;
+  comentario: string | null;
+  fotos: FotoVisitaDto[];
+}
+
 export interface ComentarioVisitaDto {
   id: string;
-  tipo: TipoComentarioVisita;
   texto: string | null;
+  /** Solo en las constancias de cambio de estado. */
+  estado: EstadoVisita | null;
   autor: PersonaDto | null;
   fecha: Date;
 }
 
 export interface VisitaDetalle extends VisitaResumen {
   observaciones: string | null;
+  sitio: VisitaResumen['sitio'] & { direccion: string | null };
   ubicacion: { latitud: number; longitud: number } | null;
-  fotos: FotoVisitaDto[];
+  epp: FotoVisitaDto[];
+  fachada: FotoVisitaDto[];
+  croquis: FotoVisitaDto[];
+  hallazgos: HallazgoDto[];
   comentarios: ComentarioVisitaDto[];
-  /** Qué falta para poder finalizarla. */
+  /** Qué falta para dar la visita por completa (solo informa, no bloquea). */
   faltantes: string[];
 }
 
-/** Opciones para registrar una visita: órdenes abiertas con los sitios donde tienen trabajos. */
-export interface OpcionOrden {
-  id: string;
-  numero: string | null;
-  cliente: { id: string; razonSocial: string };
-  sitios: { id: string; codigo: string; nombre: string }[];
+/** Lo que necesita el formulario de nueva visita: sitios existentes y clientes (para uno nuevo). */
+export interface OpcionesVisita {
+  sitios: {
+    id: string;
+    codigo: string;
+    nombre: string;
+    cliente: { id: string; razonSocial: string };
+  }[];
+  clientes: { id: string; razonSocial: string }[];
 }
 
 export interface SubidaFotoVisita {
@@ -115,8 +144,8 @@ export interface SubidaFotoVisita {
 }
 
 /**
- * Visitas técnicas. Las registra el técnico (o un ADMIN); un TECNICO solo ve y edita las suyas.
- * ADMIN y SUPERVISOR ven todas. Al finalizar se avisa a ADMIN y SUPERVISOR; el ADMIN puede reabrir.
+ * Visitas técnicas. Las registra el técnico (o un ADMIN) y quedan a su nombre; un TECNICO solo
+ * ve y edita las suyas. ADMIN y SUPERVISOR ven todas; SUPERVISOR solo consulta.
  */
 @Injectable()
 export class VisitasService {
@@ -125,12 +154,16 @@ export class VisitasService {
   constructor(
     @InjectRepository(VisitaTecnica)
     private readonly visitas: Repository<VisitaTecnica>,
+    @InjectRepository(HallazgoVisita)
+    private readonly hallazgos: Repository<HallazgoVisita>,
     @InjectRepository(FotoVisita)
     private readonly fotos: Repository<FotoVisita>,
     @InjectRepository(ComentarioVisita)
     private readonly comentarios: Repository<ComentarioVisita>,
-    @InjectRepository(OrdenCompra)
-    private readonly ordenes: Repository<OrdenCompra>,
+    @InjectRepository(Sitio)
+    private readonly sitios: Repository<Sitio>,
+    @InjectRepository(Cliente)
+    private readonly clientes: Repository<Cliente>,
     private readonly storage: StorageService,
     private readonly notificaciones: NotificacionesService,
   ) {}
@@ -141,13 +174,11 @@ export class VisitasService {
   ): Promise<VisitaResumen[]> {
     const qb = this.visitas
       .createQueryBuilder('v')
-      .innerJoinAndSelect('v.orden', 'o')
-      .innerJoinAndSelect('o.cliente', 'c')
       .innerJoinAndSelect('v.sitio', 's')
+      .innerJoinAndSelect('s.cliente', 'c')
       .innerJoinAndSelect('v.tecnico', 't')
       .orderBy('v.fecha', 'DESC')
       .addOrderBy('v.creadoEn', 'DESC');
-
     if (usuario.rol === Rol.TECNICO) {
       qb.andWhere('v.tecnicoId = :yo', { yo: usuario.id });
     }
@@ -156,47 +187,42 @@ export class VisitasService {
     }
     if (filtros.q) {
       qb.andWhere(
-        '(s.codigo ILIKE :q OR s.nombre ILIKE :q OR o.numero ILIKE :q)',
-        {
-          q: `%${escaparLike(filtros.q)}%`,
-        },
+        '(s.codigo ILIKE :q OR s.nombre ILIKE :q OR c.razonSocial ILIKE :q)',
+        { q: `%${escaparLike(filtros.q)}%` },
       );
     }
     const visitas = await qb.getMany();
-    const conteos = await this.contarFotos(visitas.map((v) => v.id));
-    return visitas.map((v) => resumen(v, conteos.get(v.id) ?? 0));
+    const ids = visitas.map((v) => v.id);
+    const [fotos, hallazgos] = await Promise.all([
+      this.contar(this.fotos, ids, 'f.confirmada = true'),
+      this.contar(this.hallazgos, ids),
+    ]);
+    return visitas.map((v) =>
+      resumen(v, hallazgos.get(v.id) ?? 0, fotos.get(v.id) ?? 0),
+    );
   }
 
-  /** Órdenes ABIERTAS con sus sitios, para elegir al registrar una visita. Sin montos. */
-  async opciones(): Promise<OpcionOrden[]> {
-    const ordenes = await this.ordenes.find({
-      where: { estado: EstadoOrden.ABIERTA },
-      relations: { cliente: true, items: { sitio: true } },
-      order: { fechaEmision: 'DESC' },
-    });
-    return ordenes.map((o) => {
-      const sitios = new Map<
-        string,
-        { id: string; codigo: string; nombre: string }
-      >();
-      for (const item of o.items ?? []) {
-        if (item.sitio && !sitios.has(item.sitio.id)) {
-          sitios.set(item.sitio.id, {
-            id: item.sitio.id,
-            codigo: item.sitio.codigo,
-            nombre: item.sitio.nombre,
-          });
-        }
-      }
-      return {
-        id: o.id,
-        numero: o.numero,
-        cliente: { id: o.cliente!.id, razonSocial: o.cliente!.razonSocial },
-        sitios: [...sitios.values()].sort((a, b) =>
-          a.codigo.localeCompare(b.codigo),
-        ),
-      };
-    });
+  async opciones(): Promise<OpcionesVisita> {
+    const [sitios, clientes] = await Promise.all([
+      this.sitios.find({
+        where: { activo: true },
+        relations: { cliente: true },
+        order: { codigo: 'ASC' },
+      }),
+      this.clientes.find({
+        where: { activo: true },
+        order: { razonSocial: 'ASC' },
+      }),
+    ]);
+    return {
+      sitios: sitios.map((s) => ({
+        id: s.id,
+        codigo: s.codigo,
+        nombre: s.nombre,
+        cliente: { id: s.cliente!.id, razonSocial: s.cliente!.razonSocial },
+      })),
+      clientes: clientes.map((c) => ({ id: c.id, razonSocial: c.razonSocial })),
+    };
   }
 
   async obtener(
@@ -204,58 +230,75 @@ export class VisitasService {
     usuario: UsuarioAutenticado,
   ): Promise<VisitaDetalle> {
     const visita = await this.buscarParaVer(id, usuario);
-    const [fotos, comentarios] = await Promise.all([
-      this.fotosVisibles(visita.id),
+    const [hallazgos, fotos, comentarios] = await Promise.all([
+      this.hallazgos.find({
+        where: { visitaId: visita.id },
+        order: { posicion: 'ASC' },
+      }),
+      this.fotos.find({
+        where: { visitaId: visita.id, confirmada: true },
+        relations: { subidoPor: true },
+        order: { creadoEn: 'ASC' },
+      }),
       this.comentarios.find({
         where: { visitaId: visita.id },
         relations: { autor: true },
         order: { creadoEn: 'ASC' },
       }),
     ]);
-    return {
-      ...resumen(visita, fotos.length),
+    const presentadas = await Promise.all(
+      fotos.map((f) => this.presentarFoto(f)),
+    );
+    const de = (seccion: SeccionFotoVisita) =>
+      presentadas.filter((f) => f.seccion === seccion);
+    const detalle: VisitaDetalle = {
+      ...resumen(visita, hallazgos.length, fotos.length),
+      sitio: {
+        ...resumen(visita, 0, 0).sitio,
+        direccion: visita.sitio!.direccion ?? null,
+      },
       observaciones: visita.observaciones,
       ubicacion:
         visita.latitud !== null && visita.longitud !== null
           ? { latitud: visita.latitud, longitud: visita.longitud }
           : null,
-      fotos: await Promise.all(fotos.map((f) => this.presentarFoto(f))),
+      epp: de(SeccionFotoVisita.EPP),
+      fachada: de(SeccionFotoVisita.FACHADA),
+      croquis: de(SeccionFotoVisita.CROQUIS),
+      hallazgos: hallazgos.map((h) => ({
+        id: h.id,
+        posicion: h.posicion,
+        descripcion: h.descripcion,
+        correctivo: h.correctivo,
+        comentario: h.comentario,
+        fotos: presentadas.filter((f) => f.hallazgoId === h.id),
+      })),
       comentarios: comentarios.map((c) => ({
         id: c.id,
-        tipo: c.tipo,
         texto: c.texto,
+        estado: c.estado,
         autor: c.autor ? { id: c.autor.id, nombre: c.autor.nombre } : null,
         fecha: c.creadoEn,
       })),
-      faltantes: faltantesDe(visita, fotos.length),
+      faltantes: [],
     };
+    detalle.faltantes = faltantesDe(detalle);
+    return detalle;
   }
 
-  /** La registra el técnico que hizo la visita (queda como responsable). */
+  /** La registra el técnico que hace la visita, con un sitio existente o uno nuevo. */
   async crear(
     dto: CrearVisitaDto,
     usuario: UsuarioAutenticado,
   ): Promise<VisitaDetalle> {
-    const orden = await this.ordenes.findOne({
-      where: { id: dto.ordenId },
-      relations: { items: true },
-    });
-    if (!orden) throw new NotFoundException('La orden no existe');
-    if (orden.estado !== EstadoOrden.ABIERTA) {
-      throw new ConflictException(
-        'Solo se registran visitas de órdenes ABIERTAS',
-      );
-    }
-    if (!orden.items?.some((i) => i.sitioId === dto.sitioId)) {
-      throw new ConflictException('La orden no tiene trabajos en ese sitio');
-    }
+    const sitioId = dto.sitioId
+      ? await this.exigirSitio(dto.sitioId)
+      : await this.crearSitio(dto.sitioNuevo!);
     const { id } = await this.visitas.save(
       this.visitas.create({
-        ordenId: dto.ordenId,
-        sitioId: dto.sitioId,
+        sitioId,
         tecnicoId: usuario.id,
         fecha: dto.fecha,
-        motivo: dto.motivo,
         observaciones: dto.observaciones || null,
       }),
     );
@@ -270,11 +313,48 @@ export class VisitasService {
     const visita = await this.buscarParaEditar(id, usuario);
     await this.visitas.update(visita.id, {
       ...(dto.fecha !== undefined && { fecha: dto.fecha }),
-      ...(dto.motivo !== undefined && { motivo: dto.motivo }),
       ...(dto.observaciones !== undefined && {
         observaciones: dto.observaciones || null,
       }),
     });
+    return this.obtener(id, usuario);
+  }
+
+  /**
+   * Cambia el estado (pendiente, visitado, acceso rechazado) y deja la constancia. Si lo cambia
+   * el técnico se avisa a ADMIN y SUPERVISOR; si lo cambia otro, se avisa al técnico.
+   */
+  async cambiarEstado(
+    id: string,
+    dto: CambiarEstadoVisitaDto,
+    usuario: UsuarioAutenticado,
+  ): Promise<VisitaDetalle> {
+    const visita = await this.buscarParaEditar(id, usuario);
+    if (visita.estado === dto.estado) return this.obtener(id, usuario);
+    await this.visitas.manager.transaction(async (em) => {
+      await em.update(VisitaTecnica, visita.id, { estado: dto.estado });
+      await em.insert(ComentarioVisita, {
+        visitaId: visita.id,
+        estado: dto.estado,
+        texto: dto.comentario ?? null,
+        autorId: usuario.id,
+      });
+    });
+    const destinatarios =
+      usuario.id === visita.tecnicoId
+        ? await this.notificaciones.idsConRol(Rol.ADMIN, Rol.SUPERVISOR)
+        : [visita.tecnicoId];
+    await this.notificaciones.avisar(
+      destinatarios,
+      {
+        tipo: TipoNotificacion.VISITA_ESTADO,
+        titulo: `Visita ${visita.sitio!.codigo}: ${NOMBRE_ESTADO[dto.estado]}`,
+        detalle:
+          dto.comentario ?? `${visita.sitio!.nombre} · ${usuario.nombre}`,
+        visitaId: visita.id,
+      },
+      usuario.id,
+    );
     return this.obtener(id, usuario);
   }
 
@@ -290,6 +370,68 @@ export class VisitasService {
     return this.obtener(id, usuario);
   }
 
+  // ---------- Hallazgos ----------
+
+  async crearHallazgo(
+    id: string,
+    dto: CrearHallazgoDto,
+    usuario: UsuarioAutenticado,
+  ): Promise<VisitaDetalle> {
+    const visita = await this.buscarParaEditar(id, usuario);
+    const existentes = await this.hallazgos.find({
+      where: { visitaId: visita.id },
+      select: { posicion: true },
+    });
+    if (existentes.length >= MAX_HALLAZGOS) {
+      throw new ConflictException(
+        `La visita admite hasta ${MAX_HALLAZGOS} hallazgos`,
+      );
+    }
+    const posicion = Math.max(0, ...existentes.map((h) => h.posicion)) + 1;
+    await this.hallazgos.insert({
+      visitaId: visita.id,
+      posicion,
+      descripcion: dto.descripcion,
+      correctivo: dto.correctivo || null,
+      comentario: dto.comentario || null,
+    });
+    return this.obtener(id, usuario);
+  }
+
+  async editarHallazgo(
+    id: string,
+    hallazgoId: string,
+    dto: EditarHallazgoDto,
+    usuario: UsuarioAutenticado,
+  ): Promise<VisitaDetalle> {
+    const visita = await this.buscarParaEditar(id, usuario);
+    const hallazgo = await this.exigirHallazgo(visita.id, hallazgoId);
+    await this.hallazgos.update(hallazgo.id, {
+      ...(dto.descripcion !== undefined && { descripcion: dto.descripcion }),
+      ...(dto.correctivo !== undefined && {
+        correctivo: dto.correctivo || null,
+      }),
+      ...(dto.comentario !== undefined && {
+        comentario: dto.comentario || null,
+      }),
+    });
+    return this.obtener(id, usuario);
+  }
+
+  /** Quita el hallazgo con sus fotos (registros y archivos). */
+  async eliminarHallazgo(
+    id: string,
+    hallazgoId: string,
+    usuario: UsuarioAutenticado,
+  ): Promise<VisitaDetalle> {
+    const visita = await this.buscarParaEditar(id, usuario);
+    const hallazgo = await this.exigirHallazgo(visita.id, hallazgoId);
+    const fotos = await this.fotos.findBy({ hallazgoId: hallazgo.id });
+    await this.hallazgos.delete(hallazgo.id);
+    await this.borrarArchivos(fotos);
+    return this.obtener(id, usuario);
+  }
+
   // ---------- Fotos ----------
 
   async solicitarSubida(
@@ -298,10 +440,17 @@ export class VisitasService {
     usuario: UsuarioAutenticado,
   ): Promise<SubidaFotoVisita> {
     const visita = await this.buscarParaEditar(id, usuario);
-    const cantidad = await this.fotos.countBy({ visitaId: visita.id });
-    if (cantidad >= MAX_FOTOS_VISITA) {
+    const hallazgoId = dto.hallazgoId
+      ? (await this.exigirHallazgo(visita.id, dto.hallazgoId)).id
+      : null;
+    const enGrupo = await this.fotos.countBy({
+      visitaId: visita.id,
+      seccion: dto.seccion,
+      ...(hallazgoId && { hallazgoId }),
+    });
+    if (enGrupo >= MAX_FOTOS_GRUPO) {
       throw new ConflictException(
-        `La visita ya tiene ${MAX_FOTOS_VISITA} fotos; quita alguna para subir otra`,
+        `Ya hay ${MAX_FOTOS_GRUPO} fotos aquí; quita alguna para subir otra`,
       );
     }
     const fotoId = randomUUID();
@@ -311,6 +460,8 @@ export class VisitasService {
     await this.fotos.insert({
       id: fotoId,
       visitaId: visita.id,
+      seccion: dto.seccion,
+      hallazgoId,
       clave,
       nombreArchivo: dto.nombreArchivo,
       tipoContenido: dto.tipoContenido,
@@ -320,7 +471,7 @@ export class VisitasService {
     });
     const foto = await this.cargarFoto(visita.id, fotoId);
     return {
-      foto: { ...(await this.presentarFoto(foto)), url: null },
+      foto: { ...presentarSinUrl(foto) },
       subida: {
         url,
         metodo: 'PUT',
@@ -330,7 +481,6 @@ export class VisitasService {
     };
   }
 
-  /** Verifica que el archivo llegó; desde ahí la foto aparece en la visita. */
   async confirmarFoto(
     id: string,
     fotoId: string,
@@ -368,7 +518,6 @@ export class VisitasService {
     return this.presentarFoto(await this.cargarFoto(visita.id, foto.id));
   }
 
-  /** Quita la foto de la visita (registro y archivo) mientras está en curso. */
   async quitarFoto(
     id: string,
     fotoId: string,
@@ -377,16 +526,10 @@ export class VisitasService {
     const visita = await this.buscarParaEditar(id, usuario);
     const foto = await this.buscarFotoPropia(visita.id, fotoId, usuario);
     await this.fotos.delete(foto.id);
-    try {
-      await this.storage.borrar(foto.clave);
-    } catch (error) {
-      this.logger.warn(
-        `No se pudo borrar el archivo ${foto.clave}: ${String(error)}`,
-      );
-    }
+    await this.borrarArchivos([foto]);
   }
 
-  // ---------- Comentarios y estado ----------
+  // ---------- Comentarios ----------
 
   async comentar(
     id: string,
@@ -396,11 +539,9 @@ export class VisitasService {
     const visita = await this.buscarParaVer(id, usuario);
     await this.comentarios.insert({
       visitaId: visita.id,
-      tipo: TipoComentarioVisita.COMENTARIO,
       texto: dto.texto,
       autorId: usuario.id,
     });
-    // Si comenta el técnico, se entera el admin; si comenta otro, se entera el técnico.
     const destinatarios =
       usuario.id === visita.tecnicoId
         ? await this.notificaciones.idsConRol(Rol.ADMIN)
@@ -418,85 +559,75 @@ export class VisitasService {
     return this.obtener(id, usuario);
   }
 
-  /** El técnico da por terminada la visita. 409 con `detalles` si falta algo. */
-  async finalizar(
-    id: string,
-    usuario: UsuarioAutenticado,
-  ): Promise<VisitaDetalle> {
-    const visita = await this.buscarParaEditar(id, usuario);
-    const faltantes = faltantesDe(
-      visita,
-      await this.fotos.countBy({ visitaId: visita.id, confirmada: true }),
-    );
-    if (faltantes.length > 0) {
-      throw new ConflictException({
-        message: 'La visita está incompleta',
-        detalles: faltantes,
-      });
-    }
-    await this.cambiarEstado(
-      visita,
-      EstadoVisita.FINALIZADA,
-      TipoComentarioVisita.FINALIZADA,
-      null,
-      usuario,
-    );
-    await this.notificaciones.avisar(
-      await this.notificaciones.idsConRol(Rol.ADMIN, Rol.SUPERVISOR),
-      {
-        tipo: TipoNotificacion.VISITA_FINALIZADA,
-        titulo: `Visita técnica finalizada: ${visita.sitio!.codigo}`,
-        detalle: `${visita.sitio!.nombre} · ${visita.orden!.numero ? `OC ${visita.orden!.numero}` : 'Orden pendiente'} · ${usuario.nombre}`,
-        visitaId: visita.id,
-      },
-      usuario.id,
-    );
-    return this.obtener(id, usuario);
-  }
-
-  /** El admin la vuelve a abrir para que el técnico complete o corrija. */
-  async reabrir(
-    id: string,
-    dto: ReabrirVisitaDto,
-    usuario: UsuarioAutenticado,
-  ): Promise<VisitaDetalle> {
-    const visita = await this.buscarParaVer(id, usuario);
-    if (visita.estado !== EstadoVisita.FINALIZADA) {
-      throw new ConflictException('La visita ya está en curso');
-    }
-    await this.cambiarEstado(
-      visita,
-      EstadoVisita.EN_CURSO,
-      TipoComentarioVisita.REABIERTA,
-      dto.comentario ?? null,
-      usuario,
-    );
-    await this.notificaciones.avisar(
-      [visita.tecnicoId],
-      {
-        tipo: TipoNotificacion.VISITA_REABIERTA,
-        titulo: `Reabrieron tu visita: ${visita.sitio!.codigo}`,
-        detalle: dto.comentario ?? visita.sitio!.nombre,
-        visitaId: visita.id,
-      },
-      usuario.id,
-    );
-    return this.obtener(id, usuario);
-  }
-
   /** Borra una visita registrada por error, con sus fotos (solo ADMIN). */
   async eliminar(id: string, usuario: UsuarioAutenticado): Promise<void> {
     const visita = await this.buscarParaVer(id, usuario);
     const fotos = await this.fotos.findBy({ visitaId: visita.id });
     await this.visitas.delete(visita.id);
-    for (const foto of fotos) {
-      try {
-        await this.storage.borrar(foto.clave);
-      } catch (error) {
-        this.logger.warn(
-          `No se pudo borrar el archivo ${foto.clave}: ${String(error)}`,
-        );
+    await this.borrarArchivos(fotos);
+  }
+
+  /**
+   * ZIP con las fotos en carpetas: `1 EPP`, `2 Fachada`, `3 Croquis` y
+   * `4 Hallazgos/01 Techo en mal estado/…`. Se transmite mientras se arma.
+   */
+  async descargarZip(
+    id: string,
+    usuario: UsuarioAutenticado,
+    res: Response,
+  ): Promise<void> {
+    const visita = await this.buscarParaVer(id, usuario);
+    const [fotos, hallazgos] = await Promise.all([
+      this.fotos.find({
+        where: { visitaId: visita.id, confirmada: true },
+        order: { creadoEn: 'ASC' },
+      }),
+      this.hallazgos.find({ where: { visitaId: visita.id } }),
+    ]);
+    if (fotos.length === 0) {
+      throw new NotFoundException('La visita todavía no tiene fotos');
+    }
+    if (!this.storage.configurado) {
+      throw new ServiceUnavailableException(
+        'El almacenamiento de fotos no está configurado',
+      );
+    }
+    const nombre = limpiar(`Visita ${visita.sitio!.codigo} ${visita.fecha}`);
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${nombre}.zip"; filename*=UTF-8''${encodeURIComponent(nombre)}.zip`,
+    );
+    const zip = new ZipArchive({ store: true });
+    zip.pipe(res);
+    try {
+      const contadores = new Map<string, number>();
+      const ordenadas = [...fotos].sort(
+        (a, b) =>
+          ORDEN_SECCION[a.seccion] - ORDEN_SECCION[b.seccion] ||
+          (hallazgos.find((h) => h.id === a.hallazgoId)?.posicion ?? 0) -
+            (hallazgos.find((h) => h.id === b.hallazgoId)?.posicion ?? 0) ||
+          (a.tomadaEn ?? a.creadoEn).getTime() -
+            (b.tomadaEn ?? b.creadoEn).getTime(),
+      );
+      for (const foto of ordenadas) {
+        const carpeta = carpetaDe(foto, hallazgos);
+        const n = (contadores.get(carpeta) ?? 0) + 1;
+        contadores.set(carpeta, n);
+        const extension = foto.clave.split('.').pop();
+        zip.append(await this.storage.leer(foto.clave), {
+          name: `${carpeta}/${String(n).padStart(3, '0')}.${extension}`,
+        });
+        await unaEntrada(zip);
       }
+      await zip.finalize();
+    } catch (error) {
+      this.logger.error(
+        `ZIP de la visita ${visita.id} interrumpido`,
+        error instanceof Error ? error.stack : String(error),
+      );
+      zip.abort();
+      res.destroy();
     }
   }
 
@@ -509,7 +640,7 @@ export class VisitasService {
   ): Promise<VisitaTecnica> {
     const visita = await this.visitas.findOne({
       where: { id },
-      relations: { orden: { cliente: true }, sitio: true, tecnico: true },
+      relations: { sitio: { cliente: true }, tecnico: true },
     });
     if (
       !visita ||
@@ -520,7 +651,7 @@ export class VisitasService {
     return visita;
   }
 
-  /** Solo se edita en curso, y solo el técnico que la registró o un ADMIN. */
+  /** Edita el técnico que la registró o un ADMIN, en cualquier estado. */
   private async buscarParaEditar(
     id: string,
     usuario: UsuarioAutenticado,
@@ -531,12 +662,48 @@ export class VisitasService {
         'Solo el técnico de la visita o un administrador puede cambiarla',
       );
     }
-    if (visita.estado !== EstadoVisita.EN_CURSO) {
+    return visita;
+  }
+
+  private async exigirSitio(id: string): Promise<string> {
+    const sitio = await this.sitios.findOneBy({ id, activo: true });
+    if (!sitio) throw new NotFoundException('El sitio no existe');
+    return sitio.id;
+  }
+
+  /** Registra el sitio que el técnico encontró y todavía no estaba en el sistema. */
+  private async crearSitio(
+    dto: NonNullable<CrearVisitaDto['sitioNuevo']>,
+  ): Promise<string> {
+    if (!(await this.clientes.existsBy({ id: dto.clienteId, activo: true }))) {
+      throw new NotFoundException('El cliente no existe');
+    }
+    if (await this.sitios.existsBy({ codigo: dto.codigo })) {
       throw new ConflictException(
-        'La visita está finalizada y no se puede modificar',
+        `Ya existe un sitio con el código ${dto.codigo}; elígelo de la lista`,
       );
     }
-    return visita;
+    const { id } = await this.sitios.save(
+      this.sitios.create({
+        codigo: dto.codigo,
+        nombre: dto.nombre,
+        clienteId: dto.clienteId,
+        direccion: dto.direccion || null,
+      }),
+    );
+    return id;
+  }
+
+  private async exigirHallazgo(
+    visitaId: string,
+    hallazgoId: string,
+  ): Promise<HallazgoVisita> {
+    const hallazgo = await this.hallazgos.findOneBy({
+      id: hallazgoId,
+      visitaId,
+    });
+    if (!hallazgo) throw new NotFoundException('El hallazgo no existe');
+    return hallazgo;
   }
 
   private async buscarFotoPropia(
@@ -554,14 +721,6 @@ export class VisitasService {
     return foto;
   }
 
-  private fotosVisibles(visitaId: string): Promise<FotoVisita[]> {
-    return this.fotos.find({
-      where: { visitaId, confirmada: true },
-      relations: { subidoPor: true },
-      order: { creadoEn: 'ASC' },
-    });
-  }
-
   private cargarFoto(visitaId: string, id: string): Promise<FotoVisita> {
     return this.fotos.findOneOrFail({
       where: { id, visitaId },
@@ -571,84 +730,144 @@ export class VisitasService {
 
   private async presentarFoto(f: FotoVisita): Promise<FotoVisitaDto> {
     return {
-      id: f.id,
-      nombreArchivo: f.nombreArchivo,
-      comentario: f.comentario,
-      tomadaEn: f.tomadaEn,
-      subidaEn: f.creadoEn,
-      subidoPor: f.subidoPor
-        ? { id: f.subidoPor.id, nombre: f.subidoPor.nombre }
-        : null,
+      ...presentarSinUrl(f),
       url: this.storage.configurado
         ? await this.storage.urlParaDescargar(f.clave)
         : null,
     };
   }
 
-  /** Cambia el estado y deja la constancia en los comentarios, en una sola transacción. */
-  private async cambiarEstado(
-    visita: VisitaTecnica,
-    estado: EstadoVisita,
-    tipo: TipoComentarioVisita,
-    texto: string | null,
-    usuario: UsuarioAutenticado,
-  ): Promise<void> {
-    await this.visitas.manager.transaction(async (em) => {
-      await em.update(VisitaTecnica, visita.id, { estado });
-      await em.insert(ComentarioVisita, {
-        visitaId: visita.id,
-        tipo,
-        texto,
-        autorId: usuario.id,
-      });
-    });
+  private async borrarArchivos(fotos: FotoVisita[]): Promise<void> {
+    for (const foto of fotos) {
+      try {
+        await this.storage.borrar(foto.clave);
+      } catch (error) {
+        this.logger.warn(
+          `No se pudo borrar el archivo ${foto.clave}: ${String(error)}`,
+        );
+      }
+    }
   }
 
-  private async contarFotos(ids: string[]): Promise<Map<string, number>> {
+  private async contar(
+    repo: Repository<FotoVisita> | Repository<HallazgoVisita>,
+    ids: string[],
+    condicion?: string,
+  ): Promise<Map<string, number>> {
     if (ids.length === 0) return new Map();
-    const filas = await this.fotos
+    const qb = repo
       .createQueryBuilder('f')
       .select('f.visitaId', 'visitaId')
       .addSelect('COUNT(*)', 'total')
       .where('f.visitaId IN (:...ids)', { ids })
-      .andWhere('f.confirmada = true')
-      .groupBy('f.visitaId')
-      .getRawMany<{ visitaId: string; total: string }>();
+      .groupBy('f.visitaId');
+    if (condicion) qb.andWhere(condicion);
+    const filas = await qb.getRawMany<{ visitaId: string; total: string }>();
     return new Map(filas.map((f) => [f.visitaId, Number(f.total)]));
   }
 }
 
-function resumen(v: VisitaTecnica, cantidadFotos: number): VisitaResumen {
+function resumen(
+  v: VisitaTecnica,
+  cantidadHallazgos: number,
+  cantidadFotos: number,
+): VisitaResumen {
   return {
     id: v.id,
     estado: v.estado,
     fecha: v.fecha,
-    motivo: v.motivo,
     creadoEn: v.creadoEn,
     actualizadoEn: v.actualizadoEn,
-    orden: {
-      id: v.orden!.id,
-      numero: v.orden!.numero,
-      cliente: {
-        id: v.orden!.cliente!.id,
-        razonSocial: v.orden!.cliente!.razonSocial,
-      },
-    },
     sitio: {
       id: v.sitio!.id,
       codigo: v.sitio!.codigo,
       nombre: v.sitio!.nombre,
+      cliente: {
+        id: v.sitio!.cliente!.id,
+        razonSocial: v.sitio!.cliente!.razonSocial,
+      },
     },
     tecnico: { id: v.tecnico!.id, nombre: v.tecnico!.nombre },
+    cantidadHallazgos,
     cantidadFotos,
   };
 }
 
-/** Para finalizar: ubicación registrada y al menos una foto. */
-function faltantesDe(v: VisitaTecnica, fotos: number): string[] {
+function presentarSinUrl(f: FotoVisita): FotoVisitaDto {
+  return {
+    id: f.id,
+    seccion: f.seccion,
+    hallazgoId: f.hallazgoId,
+    nombreArchivo: f.nombreArchivo,
+    comentario: f.comentario,
+    tomadaEn: f.tomadaEn,
+    subidaEn: f.creadoEn,
+    subidoPor: f.subidoPor
+      ? { id: f.subidoPor.id, nombre: f.subidoPor.nombre }
+      : null,
+    url: null,
+  };
+}
+
+/** Lo que conviene completar antes de marcarla como visitada (solo informa). */
+function faltantesDe(v: VisitaDetalle): string[] {
   const faltan: string[] = [];
-  if (v.latitud === null || v.longitud === null)
-    faltan.push('Falta registrar la ubicación');
-  if (fotos === 0) faltan.push('Falta al menos una foto de la visita');
+  if (!v.ubicacion) faltan.push('Registrar la ubicación');
+  if (v.epp.length === 0) faltan.push('Fotos con EPP');
+  if (v.fachada.length === 0) faltan.push('Foto de la fachada');
+  if (v.croquis.length === 0) faltan.push('Croquis con medidas');
+  if (v.hallazgos.length === 0) faltan.push('Al menos un hallazgo');
+  for (const h of v.hallazgos) {
+    if (h.fotos.length === 0) faltan.push(`Fotos del hallazgo ${h.posicion}`);
+  }
   return faltan;
+}
+
+const ORDEN_SECCION: Record<SeccionFotoVisita, number> = {
+  [SeccionFotoVisita.EPP]: 1,
+  [SeccionFotoVisita.FACHADA]: 2,
+  [SeccionFotoVisita.CROQUIS]: 3,
+  [SeccionFotoVisita.HALLAZGO]: 4,
+};
+
+function carpetaDe(foto: FotoVisita, hallazgos: HallazgoVisita[]): string {
+  switch (foto.seccion) {
+    case SeccionFotoVisita.EPP:
+      return '1 EPP';
+    case SeccionFotoVisita.FACHADA:
+      return '2 Fachada';
+    case SeccionFotoVisita.CROQUIS:
+      return '3 Croquis';
+    default: {
+      const h = hallazgos.find((x) => x.id === foto.hallazgoId);
+      return h
+        ? `4 Hallazgos/${String(h.posicion).padStart(2, '0')} ${limpiar(h.descripcion)}`
+        : '4 Hallazgos/Otros';
+    }
+  }
+}
+
+/** Espera a que el ZIP termine de escribir la entrada actual, o falla si hubo un error. */
+function unaEntrada(zip: ZipArchive): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const listo = () => {
+      zip.off('error', fallo);
+      resolve();
+    };
+    const fallo = (error: Error) => {
+      zip.off('entry', listo);
+      reject(error);
+    };
+    zip.once('entry', listo);
+    zip.once('error', fallo);
+  });
+}
+
+/** Quita caracteres que no se permiten en nombres de archivo o carpeta. */
+function limpiar(texto: string): string {
+  return texto
+    .replace(/[\\/:*?"<>|\r\n]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80);
 }

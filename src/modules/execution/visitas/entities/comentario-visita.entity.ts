@@ -1,18 +1,12 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
 import { EntidadBase } from '../../../../shared/entities/base.entity.js';
 import { Usuario } from '../../../core/usuarios/entities/usuario.entity.js';
-import { VisitaTecnica } from './visita-tecnica.entity.js';
+import { EstadoVisita, VisitaTecnica } from './visita-tecnica.entity.js';
 
-export enum TipoComentarioVisita {
-  /** Mensaje escrito por el técnico o el admin. */
-  COMENTARIO = 'COMENTARIO',
-  /** Constancia automática: el técnico finalizó la visita. */
-  FINALIZADA = 'FINALIZADA',
-  /** Constancia automática: el admin la reabrió (con el motivo, si lo dio). */
-  REABIERTA = 'REABIERTA',
-}
-
-/** Conversación e historial de la visita, en orden de llegada. */
+/**
+ * Conversación e historial de la visita, en orden de llegada: comentarios escritos y, cuando
+ * cambia el estado, una constancia automática con el estado nuevo (`estado`).
+ */
 @Entity('comentarios_visita')
 export class ComentarioVisita extends EntidadBase {
   @Index()
@@ -23,15 +17,13 @@ export class ComentarioVisita extends EntidadBase {
   @JoinColumn({ name: 'visita_id' })
   visita?: VisitaTecnica;
 
-  @Column({
-    type: 'enum',
-    enum: TipoComentarioVisita,
-    default: TipoComentarioVisita.COMENTARIO,
-  })
-  tipo: TipoComentarioVisita;
-
+  /** Texto escrito; en una constancia de estado, el motivo opcional. */
   @Column({ type: 'varchar', length: 1000, nullable: true })
   texto: string | null;
+
+  /** Solo en las constancias: el estado al que pasó la visita. */
+  @Column({ type: 'enum', enum: EstadoVisita, nullable: true })
+  estado: EstadoVisita | null;
 
   @Column({ name: 'autor_id', type: 'uuid' })
   autorId: string;

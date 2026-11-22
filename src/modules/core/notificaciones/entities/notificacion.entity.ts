@@ -11,10 +11,8 @@ export enum TipoNotificacion {
   INFORME_REABIERTO = 'INFORME_REABIERTO',
   /** Al autor: un administrador descartó una de sus fotos. */
   FOTO_DESCARTADA = 'FOTO_DESCARTADA',
-  /** A administradores y supervisores: un técnico finalizó una visita técnica. */
-  VISITA_FINALIZADA = 'VISITA_FINALIZADA',
-  /** Al técnico: el admin reabrió su visita técnica. */
-  VISITA_REABIERTA = 'VISITA_REABIERTA',
+  /** Cambió el estado de una visita técnica (visitado, acceso rechazado…): al admin o al técnico. */
+  VISITA_ESTADO = 'VISITA_ESTADO',
   /** Comentario nuevo en una visita técnica (al técnico o a los admin). */
   VISITA_COMENTARIO = 'VISITA_COMENTARIO',
 }
