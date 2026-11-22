@@ -121,11 +121,11 @@ Todas bajo `/api`. Las de consulta piden sesión; las de escritura, el rol indic
 | `POST /visitas` | ADMIN, TECNICO | Registra la visita con `sitioId` o con `sitioNuevo` (`clienteId`, `codigo`, `nombre`, `direccion`), `fecha` y `observaciones`. Queda a nombre de quien la registra |
 | `PATCH /visitas/:id`, `PATCH /visitas/:id/ubicacion` | Técnico de la visita o ADMIN | Corrige fecha u observaciones, o guarda la ubicación |
 | `PATCH /visitas/:id/estado` | Técnico de la visita o ADMIN | `PENDIENTE`, `VISITADO` o `ACCESO_RECHAZADO` (con `comentario` opcional); avisa a la otra parte |
-| `POST·PATCH·DELETE /visitas/:id/hallazgos[/:hallazgoId]` | Técnico de la visita o ADMIN | Hallazgos: `descripcion` (anomalía), `correctivo` y `comentario` (medidas). Al quitarlo se borran sus fotos |
-| `POST /visitas/:id/fotos`, `POST …/fotos/:fotoId/confirmar` | Técnico de la visita o ADMIN | Sube una foto en dos pasos a `EPP`, `FACHADA`, `CROQUIS` o `HALLAZGO` (con `hallazgoId`). Máx. 20 por grupo |
+| `POST·PATCH·DELETE /visitas/:id/hallazgos[/:hallazgoId]` | Técnico de la visita o ADMIN | Ítems (en la API, «hallazgos»): `descripcion` (anomalía), `correctivo`, medidas `largo`·`ancho`·`alto` en metros y `comentario`. Al quitarlo se borran sus fotos |
+| `POST /visitas/:id/fotos`, `POST …/fotos/:fotoId/confirmar` | Técnico de la visita o ADMIN | Sube una foto en dos pasos a `EPP`, `FACHADA`, `CROQUIS`, o a un ítem: `HALLAZGO` (foto normal) o `MEDIDA` (foto con flexómetro), ambas con `hallazgoId`. Máx. 20 por grupo |
 | `PATCH·DELETE /visitas/:id/fotos/:fotoId` | Autor o ADMIN | Cambia el comentario o quita la foto (borra registro y archivo) |
 | `POST /visitas/:id/comentarios` | Técnico de la visita o ADMIN | Agrega un comentario; avisa a la otra parte |
-| `GET /visitas/:id/fotos.zip` | Quien ve la visita | Fotos en carpetas: `1 EPP`, `2 Fachada`, `3 Croquis`, `4 Hallazgos/01 <anomalía>/…` |
+| `GET /visitas/:id/fotos.zip` | Quien ve la visita | Fotos en carpetas: `1 EPP`, `2 Fachada`, `3 Croquis`, `4 Ítems/01 <anomalía>/…`, con `Medidas/` para las fotos con flexómetro |
 | `DELETE /visitas/:id` | ADMIN | Elimina la visita con sus fotos |
 | `GET /health` | Pública | Estado del servidor y de la base |
 
@@ -159,7 +159,7 @@ Contrata es la herramienta donde los **técnicos suben las fotos**. La aprobaci�
 Es la **inspección previa** de un sitio, sin orden de compra: puede terminar en un trabajo o no. **La registra el propio técnico**, eligiendo un sitio existente o registrando uno nuevo en el momento.
 
 1. **Fotos fijas:** con EPP, de la fachada (vivienda o estación) y del croquis con las medidas.
-2. **Hallazgos:** el técnico agrega uno por cada problema (p. ej. «Techo en mal estado»), con el posible correctivo, sus fotos y las medidas en el comentario. Con eso el área de presupuestos cotiza.
+2. **Ítems:** el técnico agrega uno por cada problema (p. ej. «Techo en mal estado»), con el posible correctivo, sus fotos, sus **fotos con flexómetro** (aparte, para poder leer la medida) y las medidas largo, ancho y alto. Con eso el área de presupuestos cotiza.
 3. **Estado:** `PENDIENTE` (pendiente de visitar), `VISITADO` o `ACCESO_RECHAZADO`. Cada cambio queda en los comentarios y avisa a la otra parte.
 
 - Un técnico solo ve las suyas (otra visita le da 404); ADMIN y SUPERVISOR ven todas. SUPERVISOR solo consulta.

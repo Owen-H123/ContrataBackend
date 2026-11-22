@@ -96,8 +96,14 @@ export interface HallazgoDto {
   posicion: number;
   descripcion: string;
   correctivo: string | null;
+  /** Medidas en metros. */
+  largo: number | null;
+  ancho: number | null;
+  alto: number | null;
   comentario: string | null;
   fotos: FotoVisitaDto[];
+  /** Fotos con el flexómetro mostrando la medida. */
+  fotosMedida: FotoVisitaDto[];
 }
 
 export interface ComentarioVisitaDto {
@@ -270,8 +276,18 @@ export class VisitasService {
         posicion: h.posicion,
         descripcion: h.descripcion,
         correctivo: h.correctivo,
+        largo: h.largo,
+        ancho: h.ancho,
+        alto: h.alto,
         comentario: h.comentario,
-        fotos: presentadas.filter((f) => f.hallazgoId === h.id),
+        fotos: presentadas.filter(
+          (f) =>
+            f.hallazgoId === h.id && f.seccion === SeccionFotoVisita.HALLAZGO,
+        ),
+        fotosMedida: presentadas.filter(
+          (f) =>
+            f.hallazgoId === h.id && f.seccion === SeccionFotoVisita.MEDIDA,
+        ),
       })),
       comentarios: comentarios.map((c) => ({
         id: c.id,
@@ -393,6 +409,9 @@ export class VisitasService {
       posicion,
       descripcion: dto.descripcion,
       correctivo: dto.correctivo || null,
+      largo: dto.largo ?? null,
+      ancho: dto.ancho ?? null,
+      alto: dto.alto ?? null,
       comentario: dto.comentario || null,
     });
     return this.obtener(id, usuario);
@@ -411,6 +430,9 @@ export class VisitasService {
       ...(dto.correctivo !== undefined && {
         correctivo: dto.correctivo || null,
       }),
+      ...(dto.largo !== undefined && { largo: dto.largo }),
+      ...(dto.ancho !== undefined && { ancho: dto.ancho }),
+      ...(dto.alto !== undefined && { alto: dto.alto }),
       ...(dto.comentario !== undefined && {
         comentario: dto.comentario || null,
       }),
@@ -569,7 +591,8 @@ export class VisitasService {
 
   /**
    * ZIP con las fotos en carpetas: `1 EPP`, `2 Fachada`, `3 Croquis` y
-   * `4 Hallazgos/01 Techo en mal estado/…`. Se transmite mientras se arma.
+   * `4 Ítems/01 Techo en mal estado/…` (con `Medidas/` para las fotos con flexómetro).
+   * Se transmite mientras se arma.
    */
   async descargarZip(
     id: string,
@@ -816,9 +839,9 @@ function faltantesDe(v: VisitaDetalle): string[] {
   if (v.epp.length === 0) faltan.push('Fotos con EPP');
   if (v.fachada.length === 0) faltan.push('Foto de la fachada');
   if (v.croquis.length === 0) faltan.push('Croquis con medidas');
-  if (v.hallazgos.length === 0) faltan.push('Al menos un hallazgo');
+  if (v.hallazgos.length === 0) faltan.push('Al menos un ítem');
   for (const h of v.hallazgos) {
-    if (h.fotos.length === 0) faltan.push(`Fotos del hallazgo ${h.posicion}`);
+    if (h.fotos.length === 0) faltan.push(`Fotos del ítem ${h.posicion}`);
   }
   return faltan;
 }
@@ -828,6 +851,7 @@ const ORDEN_SECCION: Record<SeccionFotoVisita, number> = {
   [SeccionFotoVisita.FACHADA]: 2,
   [SeccionFotoVisita.CROQUIS]: 3,
   [SeccionFotoVisita.HALLAZGO]: 4,
+  [SeccionFotoVisita.MEDIDA]: 4,
 };
 
 function carpetaDe(foto: FotoVisita, hallazgos: HallazgoVisita[]): string {
@@ -840,9 +864,13 @@ function carpetaDe(foto: FotoVisita, hallazgos: HallazgoVisita[]): string {
       return '3 Croquis';
     default: {
       const h = hallazgos.find((x) => x.id === foto.hallazgoId);
-      return h
-        ? `4 Hallazgos/${String(h.posicion).padStart(2, '0')} ${limpiar(h.descripcion)}`
-        : '4 Hallazgos/Otros';
+      const item = h
+        ? `4 Ítems/${String(h.posicion).padStart(2, '0')} ${limpiar(h.descripcion)}`
+        : '4 Ítems/Otros';
+      // Las fotos con flexómetro van en su propia carpeta dentro del ítem.
+      return foto.seccion === SeccionFotoVisita.MEDIDA
+        ? `${item}/Medidas`
+        : item;
     }
   }
 }

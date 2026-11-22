@@ -12,8 +12,10 @@ export enum SeccionFotoVisita {
   FACHADA = 'FACHADA',
   /** Croquis con las medidas (dibujo a mano fotografiado). */
   CROQUIS = 'CROQUIS',
-  /** Foto de un hallazgo (va con `hallazgoId`). */
+  /** Foto de un ítem (va con `hallazgoId`). */
   HALLAZGO = 'HALLAZGO',
+  /** Foto de un ítem con el flexómetro mostrando la medida (va con `hallazgoId`). */
+  MEDIDA = 'MEDIDA',
 }
 
 /**
@@ -33,7 +35,7 @@ export class FotoVisita extends EntidadBase {
   @Column({ type: 'enum', enum: SeccionFotoVisita })
   seccion: SeccionFotoVisita;
 
-  /** Hallazgo al que pertenece (solo sección HALLAZGO). */
+  /** Ítem al que pertenece (secciones HALLAZGO y MEDIDA). */
   @Index()
   @Column({ name: 'hallazgo_id', type: 'uuid', nullable: true })
   hallazgoId: string | null;

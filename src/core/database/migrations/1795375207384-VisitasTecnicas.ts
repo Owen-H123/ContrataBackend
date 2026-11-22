@@ -1,7 +1,7 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class VisitasTecnicas1795325202115 implements MigrationInterface {
-  name = 'VisitasTecnicas1795325202115';
+export class VisitasTecnicas1795375207384 implements MigrationInterface {
+  name = 'VisitasTecnicas1795375207384';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
@@ -17,13 +17,13 @@ export class VisitasTecnicas1795325202115 implements MigrationInterface {
       `CREATE INDEX "IDX_45038161098f5a4aa49bca51e2" ON "visitas_tecnicas"  ("tecnico_id") `,
     );
     await queryRunner.query(
-      `CREATE TABLE "hallazgos_visita" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "creado_en" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "actualizado_en" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "visita_id" uuid NOT NULL, "posicion" integer NOT NULL, "descripcion" character varying(300) NOT NULL, "correctivo" character varying(500), "comentario" character varying(2000), CONSTRAINT "PK_a336e07a68cb412f78bce3c7da3" PRIMARY KEY ("id"))`,
+      `CREATE TABLE "hallazgos_visita" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "creado_en" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "actualizado_en" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "visita_id" uuid NOT NULL, "posicion" integer NOT NULL, "descripcion" character varying(300) NOT NULL, "correctivo" character varying(500), "largo" numeric(8,2), "ancho" numeric(8,2), "alto" numeric(8,2), "comentario" character varying(2000), CONSTRAINT "PK_a336e07a68cb412f78bce3c7da3" PRIMARY KEY ("id"))`,
     );
     await queryRunner.query(
       `CREATE INDEX "IDX_bd08741ffe9385d96d55398ee2" ON "hallazgos_visita"  ("visita_id") `,
     );
     await queryRunner.query(
-      `CREATE TYPE "public"."fotos_visita_seccion_enum" AS ENUM('EPP', 'FACHADA', 'CROQUIS', 'HALLAZGO')`,
+      `CREATE TYPE "public"."fotos_visita_seccion_enum" AS ENUM('EPP', 'FACHADA', 'CROQUIS', 'HALLAZGO', 'MEDIDA')`,
     );
     await queryRunner.query(
       `CREATE TABLE "fotos_visita" ("id" uuid NOT NULL DEFAULT gen_random_uuid(), "creado_en" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "actualizado_en" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(), "visita_id" uuid NOT NULL, "seccion" "public"."fotos_visita_seccion_enum" NOT NULL, "hallazgo_id" uuid, "clave" character varying(300) NOT NULL, "nombre_archivo" character varying(200) NOT NULL, "tipo_contenido" character varying(50) NOT NULL, "bytes" integer, "confirmada" boolean NOT NULL DEFAULT false, "comentario" character varying(500), "tomada_en" TIMESTAMP WITH TIME ZONE, "subido_por_id" uuid NOT NULL, CONSTRAINT "UQ_e9484b1d6594b873aacc5e820f2" UNIQUE ("clave"), CONSTRAINT "PK_fc37f7c1c6e327b984989fa3055" PRIMARY KEY ("id"))`,

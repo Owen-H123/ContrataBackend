@@ -62,6 +62,15 @@ export const filtrosVisitaSchema = z.object({
 });
 export type FiltrosVisitaDto = z.infer<typeof filtrosVisitaSchema>;
 
+/** Medida en metros: positiva, con hasta 2 decimales; null la borra. */
+const medida = z
+  .number()
+  .positive('La medida debe ser mayor que 0')
+  .max(99_999, 'La medida es demasiado grande')
+  .transform((n) => Math.round(n * 100) / 100)
+  .nullable()
+  .optional();
+
 export const crearHallazgoSchema = z.object({
   descripcion: z
     .string()
@@ -69,6 +78,9 @@ export const crearHallazgoSchema = z.object({
     .min(2, 'Describe la anomalía encontrada')
     .max(300),
   correctivo: z.string().trim().max(500).nullable().optional(),
+  largo: medida,
+  ancho: medida,
+  alto: medida,
   comentario: z.string().trim().max(2000).nullable().optional(),
 });
 export type CrearHallazgoDto = z.infer<typeof crearHallazgoSchema>;
@@ -91,9 +103,11 @@ export const subirFotoVisitaSchema = z
     tomadaEn: z.iso.datetime({ offset: true }).optional(),
   })
   .refine(
-    (d) => (d.seccion === SeccionFotoVisita.HALLAZGO) === !!d.hallazgoId,
+    (d) =>
+      (d.seccion === SeccionFotoVisita.HALLAZGO ||
+        d.seccion === SeccionFotoVisita.MEDIDA) === !!d.hallazgoId,
     {
-      message: 'Las fotos de un hallazgo llevan su hallazgoId (y solo ellas)',
+      message: 'Las fotos de un ítem llevan su hallazgoId (y solo ellas)',
       path: ['hallazgoId'],
     },
   );

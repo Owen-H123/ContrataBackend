@@ -1,11 +1,12 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne } from 'typeorm';
 import { EntidadBase } from '../../../../shared/entities/base.entity.js';
+import { numerico } from '../../../../shared/entities/numerico.transformer.js';
 import { VisitaTecnica } from './visita-tecnica.entity.js';
 
 /**
- * Hallazgo de la visita (el «posible correctivo» de Sytex): lo crea el técnico por cada
- * problema que encuentra. Ejemplo: «Techo en mal estado» → «Requiere cambio de calamina»,
- * con sus fotos y las medidas en el comentario.
+ * Ítem de la visita (el «posible correctivo» de Sytex; en el código, «hallazgo»): lo crea el
+ * técnico por cada problema que encuentra. Ejemplo: «Techo en mal estado» → «Requiere cambio
+ * de calamina», con sus fotos, sus fotos con flexómetro y las medidas (largo, ancho, alto).
  */
 @Entity('hallazgos_visita')
 export class HallazgoVisita extends EntidadBase {
@@ -29,7 +30,35 @@ export class HallazgoVisita extends EntidadBase {
   @Column({ type: 'varchar', length: 500, nullable: true })
   correctivo: string | null;
 
-  /** Comentarios y medidas (largo × ancho, alto…). */
+  /** Medidas del área afectada, en metros (opcionales). */
+  @Column({
+    type: 'numeric',
+    precision: 8,
+    scale: 2,
+    nullable: true,
+    transformer: numerico,
+  })
+  largo: number | null;
+
+  @Column({
+    type: 'numeric',
+    precision: 8,
+    scale: 2,
+    nullable: true,
+    transformer: numerico,
+  })
+  ancho: number | null;
+
+  @Column({
+    type: 'numeric',
+    precision: 8,
+    scale: 2,
+    nullable: true,
+    transformer: numerico,
+  })
+  alto: number | null;
+
+  /** Comentarios y otras medidas o detalles. */
   @Column({ type: 'varchar', length: 2000, nullable: true })
   comentario: string | null;
 }
