@@ -37,7 +37,10 @@ import {
   FotoVisita,
   SeccionFotoVisita,
 } from './entities/foto-visita.entity.js';
-import { HallazgoVisita } from './entities/hallazgo-visita.entity.js';
+import {
+  HallazgoVisita,
+  UnidadMedida,
+} from './entities/hallazgo-visita.entity.js';
 import {
   EstadoVisita,
   VisitaTecnica,
@@ -90,7 +93,10 @@ export interface HallazgoDto {
   posicion: number;
   descripcion: string;
   correctivo: string | null;
-  /** Medidas en metros. */
+  /** Si lleva medidas y en qué unidad. */
+  conMedidas: boolean;
+  unidad: UnidadMedida;
+  /** Medidas en la unidad del ítem. */
   largo: number | null;
   ancho: number | null;
   alto: number | null;
@@ -251,6 +257,8 @@ export class VisitasService {
         posicion: h.posicion,
         descripcion: h.descripcion,
         correctivo: h.correctivo,
+        conMedidas: h.conMedidas,
+        unidad: h.unidad,
         largo: h.largo,
         ancho: h.ancho,
         alto: h.alto,
@@ -384,6 +392,8 @@ export class VisitasService {
       posicion,
       descripcion: dto.descripcion,
       correctivo: dto.correctivo || null,
+      conMedidas: dto.conMedidas ?? false,
+      unidad: dto.unidad ?? UnidadMedida.M,
       largo: dto.largo ?? null,
       ancho: dto.ancho ?? null,
       alto: dto.alto ?? null,
@@ -405,6 +415,8 @@ export class VisitasService {
       ...(dto.correctivo !== undefined && {
         correctivo: dto.correctivo || null,
       }),
+      ...(dto.conMedidas !== undefined && { conMedidas: dto.conMedidas }),
+      ...(dto.unidad !== undefined && { unidad: dto.unidad }),
       ...(dto.largo !== undefined && { largo: dto.largo }),
       ...(dto.ancho !== undefined && { ancho: dto.ancho }),
       ...(dto.alto !== undefined && { alto: dto.alto }),

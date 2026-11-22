@@ -3,6 +3,13 @@ import { EntidadBase } from '../../../../shared/entities/base.entity.js';
 import { numerico } from '../../../../shared/entities/numerico.transformer.js';
 import { VisitaTecnica } from './visita-tecnica.entity.js';
 
+/** Unidad en la que se anotan las medidas del ítem. */
+export enum UnidadMedida {
+  M = 'M',
+  CM = 'CM',
+  MM = 'MM',
+}
+
 /**
  * Ítem de la visita (el «posible correctivo» de Sytex; en el código, «hallazgo»): lo crea el
  * técnico por cada problema que encuentra. Ejemplo: «Techo en mal estado» → «Requiere cambio
@@ -30,7 +37,18 @@ export class HallazgoVisita extends EntidadBase {
   @Column({ type: 'varchar', length: 500, nullable: true })
   correctivo: string | null;
 
-  /** Medidas del área afectada, en metros (opcionales). */
+  /**
+   * Si el ítem lleva medidas. Se pregunta al crearlo: sin medidas no se piden largo, ancho,
+   * alto ni fotos con flexómetro.
+   */
+  @Column({ name: 'con_medidas', type: 'boolean', default: false })
+  conMedidas: boolean;
+
+  /** Unidad de largo, ancho y alto (metros, centímetros o milímetros). */
+  @Column({ type: 'enum', enum: UnidadMedida, default: UnidadMedida.M })
+  unidad: UnidadMedida;
+
+  /** Medidas del área afectada, en la unidad del ítem (opcionales). */
   @Column({
     type: 'numeric',
     precision: 8,

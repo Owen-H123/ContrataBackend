@@ -5,6 +5,7 @@ import {
   type TipoImagen,
 } from '../../evidencias/dto/evidencia.schema.js';
 import { SeccionFotoVisita } from '../entities/foto-visita.entity.js';
+import { UnidadMedida } from '../entities/hallazgo-visita.entity.js';
 import { EstadoVisita } from '../entities/visita-tecnica.entity.js';
 
 export {
@@ -64,7 +65,7 @@ export const filtrosVisitaSchema = z.object({
 });
 export type FiltrosVisitaDto = z.infer<typeof filtrosVisitaSchema>;
 
-/** Medida en metros: positiva, con hasta 2 decimales; null la borra. */
+/** Medida en la unidad del ítem: positiva, con hasta 2 decimales; null la borra. */
 const medida = z
   .number()
   .positive('La medida debe ser mayor que 0')
@@ -80,6 +81,9 @@ export const crearHallazgoSchema = z.object({
     .min(2, 'Describe la anomalía encontrada')
     .max(300),
   correctivo: z.string().trim().max(500).nullable().optional(),
+  /** Si el ítem lleva medidas y en qué unidad (se pregunta al crearlo). */
+  conMedidas: z.boolean().optional(),
+  unidad: z.enum(UnidadMedida).optional(),
   largo: medida,
   ancho: medida,
   alto: medida,
