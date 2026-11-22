@@ -15,9 +15,11 @@ export {
 const fecha = z.iso.date('La fecha no es válida (AAAA-MM-DD)');
 const observaciones = z.string().trim().max(2000).nullable();
 
-/** Sitio que el técnico registra en el momento porque todavía no existe en el sistema. */
+/**
+ * Sitio que el técnico registra en el momento porque todavía no existe en el sistema.
+ * Sin cliente: la visita técnica identifica el sitio por su código y nombre.
+ */
 const sitioNuevoSchema = z.object({
-  clienteId: z.uuid('Elige el cliente'),
   codigo: z
     .string()
     .trim()
@@ -57,7 +59,7 @@ export type CambiarEstadoVisitaDto = z.infer<typeof cambiarEstadoVisitaSchema>;
 /** Filtros de `GET /visitas`. Un técnico solo ve las suyas, filtre lo que filtre. */
 export const filtrosVisitaSchema = z.object({
   estado: z.enum(EstadoVisita).optional(),
-  /** Busca en el código o nombre del sitio y en el cliente. */
+  /** Busca en el código o nombre del sitio. */
   q: z.string().trim().min(1).max(60).optional(),
 });
 export type FiltrosVisitaDto = z.infer<typeof filtrosVisitaSchema>;

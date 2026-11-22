@@ -17,7 +17,6 @@ import { Rol } from '../../../shared/enums/rol.enum.js';
 import { StorageService } from '../../../services/storage/storage.service.js';
 import { TipoNotificacion } from '../../core/notificaciones/entities/notificacion.entity.js';
 import { NotificacionesService } from '../../core/notificaciones/notificaciones.service.js';
-import { Cliente } from '../../master/clientes/entities/cliente.entity.js';
 import { Sitio } from '../../master/sitios/entities/sitio.entity.js';
 import { EXTENSIONES, MAX_BYTES } from '../evidencias/dto/evidencia.schema.js';
 import { coordenadasDeEnlace } from '../informes/enlace-maps.js';
@@ -67,12 +66,7 @@ export interface VisitaResumen {
   fecha: string;
   creadoEn: Date;
   actualizadoEn: Date;
-  sitio: {
-    id: string;
-    codigo: string;
-    nombre: string;
-    cliente: { id: string; razonSocial: string };
-  };
+  sitio: { id: string; codigo: string; nombre: string };
   tecnico: PersonaDto;
   cantidadHallazgos: number;
   cantidadFotos: number;
@@ -128,15 +122,9 @@ export interface VisitaDetalle extends VisitaResumen {
   faltantes: string[];
 }
 
-/** Lo que necesita el formulario de nueva visita: sitios existentes y clientes (para uno nuevo). */
+/** Lo que necesita el formulario de nueva visita: los sitios existentes. */
 export interface OpcionesVisita {
-  sitios: {
-    id: string;
-    codigo: string;
-    nombre: string;
-    cliente: { id: string; razonSocial: string };
-  }[];
-  clientes: { id: string; razonSocial: string }[];
+  sitios: { id: string; codigo: string; nombre: string }[];
 }
 
 export interface SubidaFotoVisita {
@@ -168,8 +156,6 @@ export class VisitasService {
     private readonly comentarios: Repository<ComentarioVisita>,
     @InjectRepository(Sitio)
     private readonly sitios: Repository<Sitio>,
-    @InjectRepository(Cliente)
-    private readonly clientes: Repository<Cliente>,
     private readonly storage: StorageService,
     private readonly notificaciones: NotificacionesService,
   ) {}
@@ -181,7 +167,6 @@ export class VisitasService {
     const qb = this.visitas
       .createQueryBuilder('v')
       .innerJoinAndSelect('v.sitio', 's')
-      .innerJoinAndSelect('s.cliente', 'c')
       .innerJoinAndSelect('v.tecnico', 't')
       .orderBy('v.fecha', 'DESC')
       .addOrderBy('v.creadoEn', 'DESC');
@@ -192,10 +177,9 @@ export class VisitasService {
       qb.andWhere('v.estado = :estado', { estado: filtros.estado });
     }
     if (filtros.q) {
-      qb.andWhere(
-        '(s.codigo ILIKE :q OR s.nombre ILIKE :q OR c.razonSocial ILIKE :q)',
-        { q: `%${escaparLike(filtros.q)}%` },
-      );
+      qb.andWhere('(s.codigo ILIKE :q OR s.nombre ILIKE :q)', {
+        q: `%${escaparLike(filtros.q)}%`,
+      });
     }
     const visitas = await qb.getMany();
     const ids = visitas.map((v) => v.id);
@@ -209,25 +193,16 @@ export class VisitasService {
   }
 
   async opciones(): Promise<OpcionesVisita> {
-    const [sitios, clientes] = await Promise.all([
-      this.sitios.find({
-        where: { activo: true },
-        relations: { cliente: true },
-        order: { codigo: 'ASC' },
-      }),
-      this.clientes.find({
-        where: { activo: true },
-        order: { razonSocial: 'ASC' },
-      }),
-    ]);
+    const sitios = await this.sitios.find({
+      where: { activo: true },
+      order: { codigo: 'ASC' },
+    });
     return {
       sitios: sitios.map((s) => ({
         id: s.id,
         codigo: s.codigo,
         nombre: s.nombre,
-        cliente: { id: s.cliente!.id, razonSocial: s.cliente!.razonSocial },
       })),
-      clientes: clientes.map((c) => ({ id: c.id, razonSocial: c.razonSocial })),
     };
   }
 
@@ -663,7 +638,7 @@ export class VisitasService {
   ): Promise<VisitaTecnica> {
     const visita = await this.visitas.findOne({
       where: { id },
-      relations: { sitio: { cliente: true }, tecnico: true },
+      relations: { sitio: true, tecnico: true },
     });
     if (
       !visita ||
@@ -698,9 +673,6 @@ export class VisitasService {
   private async crearSitio(
     dto: NonNullable<CrearVisitaDto['sitioNuevo']>,
   ): Promise<string> {
-    if (!(await this.clientes.existsBy({ id: dto.clienteId, activo: true }))) {
-      throw new NotFoundException('El cliente no existe');
-    }
     if (await this.sitios.existsBy({ codigo: dto.codigo })) {
       throw new ConflictException(
         `Ya existe un sitio con el código ${dto.codigo}; elígelo de la lista`,
@@ -710,7 +682,7 @@ export class VisitasService {
       this.sitios.create({
         codigo: dto.codigo,
         nombre: dto.nombre,
-        clienteId: dto.clienteId,
+        clienteId: null,
         direccion: dto.direccion || null,
       }),
     );
@@ -805,10 +777,6 @@ function resumen(
       id: v.sitio!.id,
       codigo: v.sitio!.codigo,
       nombre: v.sitio!.nombre,
-      cliente: {
-        id: v.sitio!.cliente!.id,
-        razonSocial: v.sitio!.cliente!.razonSocial,
-      },
     },
     tecnico: { id: v.tecnico!.id, nombre: v.tecnico!.nombre },
     cantidadHallazgos,

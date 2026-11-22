@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { NotificacionesModule } from '../../core/notificaciones/notificaciones.module.js';
-import { Cliente } from '../../master/clientes/entities/cliente.entity.js';
 import { Sitio } from '../../master/sitios/entities/sitio.entity.js';
 import { ComentarioVisita } from './entities/comentario-visita.entity.js';
 import { FotoVisita } from './entities/foto-visita.entity.js';
@@ -18,7 +17,6 @@ import { VisitasService } from './visitas.service.js';
       FotoVisita,
       ComentarioVisita,
       Sitio,
-      Cliente,
     ]),
     NotificacionesModule,
   ],

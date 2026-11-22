@@ -83,6 +83,12 @@ export class SitiosService {
     if (encontrados.length !== unicos.length) {
       throw new NotFoundException('Uno de los sitios no existe');
     }
+    const sinCliente = encontrados.find((s) => s.clienteId === null);
+    if (sinCliente) {
+      throw new ConflictException(
+        `El sitio ${sinCliente.codigo} no tiene cliente; asígnalo en Sitios antes de usarlo en una orden`,
+      );
+    }
     const ajeno = encontrados.find((s) => s.clienteId !== clienteId);
     if (ajeno) {
       throw new ConflictException(
