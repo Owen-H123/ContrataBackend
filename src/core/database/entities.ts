@@ -11,6 +11,9 @@ import { VisitaTecnica } from '../../modules/execution/visitas/entities/visita-t
 import { HallazgoVisita } from '../../modules/execution/visitas/entities/hallazgo-visita.entity.js';
 import { FotoVisita } from '../../modules/execution/visitas/entities/foto-visita.entity.js';
 import { ComentarioVisita } from '../../modules/execution/visitas/entities/comentario-visita.entity.js';
+import { Trabajador } from '../../modules/rrhh/entities/trabajador.entity.js';
+import { TareoFila } from '../../modules/rrhh/entities/tareo-fila.entity.js';
+import { TareoMovimiento } from '../../modules/rrhh/entities/tareo-movimiento.entity.js';
 
 /**
  * Lista única de entidades. La usan la aplicación y la línea de comandos de
@@ -30,4 +33,7 @@ export const entities = [
   HallazgoVisita,
   FotoVisita,
   ComentarioVisita,
+  Trabajador,
+  TareoFila,
+  TareoMovimiento,
 ];
