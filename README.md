@@ -115,6 +115,18 @@ Todas bajo `/api`. Las de consulta piden sesión; las de escritura, el rol indic
 | `POST /informes/:id/evidencias/:evidenciaId/restaurar` | ADMIN | Devuelve al informe una foto descartada |
 | `GET /informes/:id/evidencias/:evidenciaId/descarga` | Quien ve el informe | Enlace para descargar la foto con su nombre original |
 | `GET /informes/:id/fotos.zip` | Quien ve el informe | Todas las fotos en un ZIP con carpetas y números de secuencia (las descartadas no salen) |
+| `GET /visitas?estado=&q=` | Todos (TECNICO: solo las suyas) | Visitas técnicas con su cantidad de hallazgos y fotos |
+| `GET /visitas/opciones` | ADMIN, TECNICO | Sitios activos, para registrar una visita |
+| `GET /visitas/:id` | Quien ve la visita | Visita con ubicación, fotos de EPP, fachada y croquis, hallazgos con sus fotos, comentarios y `faltantes` |
+| `POST /visitas` | ADMIN, TECNICO | Registra la visita con `sitioId` o con `sitioNuevo` (`codigo`, `nombre`, `direccion`; sin cliente), `fecha` y `observaciones`. Queda a nombre de quien la registra |
+| `PATCH /visitas/:id`, `PATCH /visitas/:id/ubicacion` | Técnico de la visita o ADMIN | Corrige fecha u observaciones, o guarda la ubicación |
+| `PATCH /visitas/:id/estado` | Técnico de la visita o ADMIN | `PENDIENTE`, `VISITADO` o `ACCESO_RECHAZADO` (con `comentario` opcional); avisa a la otra parte |
+| `POST·PATCH·DELETE /visitas/:id/hallazgos[/:hallazgoId]` | Técnico de la visita o ADMIN | Ítems (en la API, «hallazgos»): `descripcion` (anomalía), `correctivo`, medidas `largo`·`ancho`·`alto` en metros y `comentario`. Al quitarlo se borran sus fotos |
+| `POST /visitas/:id/fotos`, `POST …/fotos/:fotoId/confirmar` | Técnico de la visita o ADMIN | Sube una foto en dos pasos a `EPP`, `FACHADA`, `CROQUIS`, o a un ítem: `HALLAZGO` (foto normal) o `MEDIDA` (foto con flexómetro), ambas con `hallazgoId`. Máx. 20 por grupo |
+| `PATCH·DELETE /visitas/:id/fotos/:fotoId` | Autor o ADMIN | Cambia el comentario o quita la foto (borra registro y archivo) |
+| `POST /visitas/:id/comentarios` | Técnico de la visita o ADMIN | Agrega un comentario; avisa a la otra parte |
+| `GET /visitas/:id/fotos.zip` | Quien ve la visita | Fotos en carpetas: `1 EPP`, `2 Fachada`, `3 Croquis`, `4 Ítems/01 <anomalía>/…`, con `Medidas/` para las fotos con flexómetro |
+| `DELETE /visitas/:id` | ADMIN | Elimina la visita con sus fotos |
 | `GET /health` | Pública | Estado del servidor y de la base |
 
 ### Órdenes de compra
@@ -141,6 +153,17 @@ Contrata es la herramienta donde los **técnicos suben las fotos**. La aprobaci�
 - Un técnico que no está asignado recibe 404 y nunca ve precios.
 - `GET /informes/:id` trae las actividades con sus fotos por etapa, `panoramicas`, `estaciones`, `epp`, `descartadas` (solo ADMIN y SUPERVISOR), el `progreso` (`completo`, `porcentaje`, `faltantes`) y el `historial`.
 - El ZIP lleva números para que, ordenado por nombre, quede en secuencia: `1 Estado del sitio/…`, `2 EPP/…`, `3 Ejecución/010 <ítem>/1 Antes/001.jpg`.
+
+### Visitas técnicas
+
+Es la **inspección previa** de un sitio, sin orden de compra: puede terminar en un trabajo o no. **La registra el propio técnico**, eligiendo un sitio existente o registrando uno nuevo en el momento. **No lleva cliente**: el sitio se identifica por su código y nombre. Un sitio creado así queda sin cliente y el admin se lo asigna en Sitios antes de usarlo en una orden de compra.
+
+1. **Fotos fijas:** con EPP, de la fachada (vivienda o estación) y del croquis con las medidas.
+2. **Ítems:** el técnico agrega uno por cada problema (p. ej. «Techo en mal estado»), con el posible correctivo, sus fotos, sus **fotos con flexómetro** (aparte, para poder leer la medida) y las medidas largo, ancho y alto. Con eso el área de presupuestos cotiza.
+3. **Estado:** `PENDIENTE` (pendiente de visitar), `VISITADO` o `ACCESO_RECHAZADO`. Cada cambio queda en los comentarios y avisa a la otra parte.
+
+- Un técnico solo ve las suyas (otra visita le da 404); ADMIN y SUPERVISOR ven todas. SUPERVISOR solo consulta.
+- `faltantes` indica lo que conviene completar (ubicación, fotos fijas, hallazgos con fotos), pero no bloquea el cambio de estado.
 
 ### Fotos
 

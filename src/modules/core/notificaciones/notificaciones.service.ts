@@ -17,6 +17,7 @@ export interface NuevoAviso {
   titulo: string;
   detalle?: string | null;
   informeId?: string | null;
+  visitaId?: string | null;
 }
 
 export interface NotificacionDto {
@@ -25,6 +26,7 @@ export interface NotificacionDto {
   titulo: string;
   detalle: string | null;
   informeId: string | null;
+  visitaId: string | null;
   leida: boolean;
   creadoEn: Date;
 }
@@ -59,6 +61,7 @@ export class NotificacionesService {
           titulo: aviso.titulo.slice(0, 160),
           detalle: aviso.detalle?.slice(0, 400) ?? null,
           informeId: aviso.informeId ?? null,
+          visitaId: aviso.visitaId ?? null,
         })),
       );
     } catch (error) {
@@ -91,6 +94,7 @@ export class NotificacionesService {
       titulo: n.titulo,
       detalle: n.detalle,
       informeId: n.informeId,
+      visitaId: n.visitaId,
       leida: n.leidaEn !== null,
       creadoEn: n.creadoEn,
     }));
