@@ -366,6 +366,79 @@ export class TareoService {
     };
   }
 
+  /**
+   * Seguimiento del tareo: por trabajador, los días que trabajó entre dos fechas (con su
+   * pago de ese día) y lo que le falta pagar. La pantalla arma con esto el mapa de
+   * asistencia, las rachas y los totales.
+   */
+  async seguimiento(desde: string, hasta: string) {
+    const filas = await this.filas.find({
+      where: { semana: Between(domingoDe(desde), hasta) },
+      relations: { trabajador: true, movimientos: true },
+    });
+    const porTrabajador = new Map<
+      string,
+      {
+        trabajador: {
+          id: string;
+          nombres: string;
+          dni: string | null;
+          cargo: string;
+        };
+        dias: Record<string, number>;
+        porPagar: number;
+        semanasPorPagar: number;
+        retenido: number;
+        ultimaSemana: string;
+      }
+    >();
+    for (const f of filas) {
+      const t = f.trabajador!;
+      const r = porTrabajador.get(t.id) ?? {
+        trabajador: {
+          id: t.id,
+          nombres: t.nombres,
+          dni: t.dni,
+          cargo: f.cargo,
+        },
+        dias: {},
+        porPagar: 0,
+        semanasPorPagar: 0,
+        retenido: 0,
+        ultimaSemana: '',
+      };
+      f.dias.forEach((trabajo, i) => {
+        const fecha = sumarDias(f.semana, i);
+        if (trabajo && fecha >= desde && fecha <= hasta)
+          r.dias[fecha] = f.pagoDia;
+      });
+      const total = calcularFila(f).total;
+      if (!f.pagadoEn && total > 0) {
+        if (f.retenido) r.retenido = redondear2(r.retenido + total);
+        else {
+          r.porPagar = redondear2(r.porPagar + total);
+          r.semanasPorPagar++;
+        }
+      }
+      // El cargo que se muestra es el de su semana más reciente.
+      if (f.semana >= r.ultimaSemana) {
+        r.ultimaSemana = f.semana;
+        r.trabajador.cargo = f.cargo;
+      }
+      porTrabajador.set(t.id, r);
+    }
+    return {
+      desde,
+      hasta,
+      trabajadores: [...porTrabajador.values()]
+        .filter((r) => Object.keys(r.dias).length || r.porPagar || r.retenido)
+        .map(({ ultimaSemana: _u, ...r }) => r)
+        .sort((a, b) =>
+          a.trabajador.nombres.localeCompare(b.trabajador.nombres),
+        ),
+    };
+  }
+
   private async obtener(id: string) {
     const fila = await this.filas.findOneBy({ id });
     if (!fila) throw new NotFoundException('La fila del tareo no existe');

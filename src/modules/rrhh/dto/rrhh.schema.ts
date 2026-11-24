@@ -155,3 +155,21 @@ export const resumenMesSchema = z.object({
     .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'El mes no es válido (AAAA-MM)'),
 });
 export type ResumenMesDto = z.infer<typeof resumenMesSchema>;
+
+/** Seguimiento: días trabajados de cada uno entre dos fechas (máximo un año). */
+export const seguimientoSchema = z
+  .object({
+    desde: z.iso.date('La fecha no es válida'),
+    hasta: z.iso.date('La fecha no es válida'),
+  })
+  .refine((d) => d.desde <= d.hasta, {
+    message: '«Desde» va antes de «hasta»',
+    path: ['desde'],
+  })
+  .refine(
+    (d) =>
+      new Date(d.hasta).getTime() - new Date(d.desde).getTime() <=
+      400 * 86_400_000,
+    { message: 'Máximo un año', path: ['hasta'] },
+  );
+export type SeguimientoDto = z.infer<typeof seguimientoSchema>;
