@@ -15,6 +15,10 @@ export enum TipoNotificacion {
   VISITA_ESTADO = 'VISITA_ESTADO',
   /** Comentario nuevo en una visita técnica (al técnico o a los admin). */
   VISITA_COMENTARIO = 'VISITA_COMENTARIO',
+  /** Hay una solicitud de dinero por aprobar. */
+  SOLICITUD_NUEVA = 'SOLICITUD_NUEVA',
+  /** La solicitud de dinero fue aprobada, rechazada, abonada o rendida. */
+  SOLICITUD_ESTADO = 'SOLICITUD_ESTADO',
 }
 
 /**
@@ -47,6 +51,9 @@ export class Notificacion extends EntidadBase {
   /** Visita técnica a la que lleva el aviso (en vez de un informe). */
   @Column({ name: 'visita_id', type: 'uuid', nullable: true })
   visitaId: string | null;
+
+  @Column({ name: 'solicitud_id', type: 'uuid', nullable: true })
+  solicitudId: string | null;
 
   /** null mientras no se lee. */
   @Column({ name: 'leida_en', type: 'timestamptz', nullable: true })

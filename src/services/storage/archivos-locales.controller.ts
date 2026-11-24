@@ -21,6 +21,7 @@ const TIPOS = new Map(
     webp: 'image/webp',
     heic: 'image/heic',
     heif: 'image/heif',
+    pdf: 'application/pdf',
   }),
 );
 

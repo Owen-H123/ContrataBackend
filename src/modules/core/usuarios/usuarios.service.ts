@@ -83,6 +83,7 @@ export class UsuariosService {
         nombre: dto.nombre,
         usuario: dto.usuario,
         rol: dto.rol,
+        permisos: dto.permisos ?? [],
         passwordHash: await bcrypt.hash(dto.password, RONDAS_HASH),
       }),
     );

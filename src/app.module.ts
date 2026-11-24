@@ -14,6 +14,7 @@ import { MasterModule } from './modules/master/master.module.js';
 import { PlanningModule } from './modules/planning/planning.module.js';
 import { ExecutionModule } from './modules/execution/execution.module.js';
 import { RrhhModule } from './modules/rrhh/rrhh.module.js';
+import { SolicitudesModule } from './modules/finanzas/solicitudes/solicitudes.module.js';
 import { StorageModule } from './services/storage/storage.module.js';
 
 @Module({
@@ -29,6 +30,7 @@ import { StorageModule } from './services/storage/storage.module.js';
     PlanningModule,
     ExecutionModule,
     RrhhModule,
+    SolicitudesModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

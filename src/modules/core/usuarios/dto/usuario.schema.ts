@@ -1,5 +1,11 @@
 import { z } from 'zod';
+import { Permiso } from '../../../../shared/enums/permiso.enum.js';
 import { Rol } from '../../../../shared/enums/rol.enum.js';
+
+const permisos = z
+  .array(z.enum(Permiso))
+  .max(10)
+  .transform((p) => [...new Set(p)]);
 
 const nombre = z.string().trim().min(2).max(120);
 const usuario = z
@@ -17,6 +23,7 @@ export const crearUsuarioSchema = z.object({
   usuario,
   password,
   rol: z.enum(Rol),
+  permisos: permisos.optional(),
 });
 export type CrearUsuarioDto = z.infer<typeof crearUsuarioSchema>;
 
@@ -26,6 +33,7 @@ export const actualizarUsuarioSchema = z
     password,
     rol: z.enum(Rol),
     activo: z.boolean(),
+    permisos,
   })
   .partial();
 export type ActualizarUsuarioDto = z.infer<typeof actualizarUsuarioSchema>;
