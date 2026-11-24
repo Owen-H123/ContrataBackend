@@ -122,6 +122,13 @@ export const editarFilaSchema = z
     cargo: z.string().trim().toUpperCase().min(2).max(60),
     retenido: z.boolean(),
     comentario: textoOpcional(500),
+    /**
+     * «Otros abonos» / «Otros descuentos» escritos directo en la celda, como en el Excel.
+     * Reemplazan el abono (o descuento) de la fila; 0 o null lo quitan. Si la fila ya tiene
+     * varios con su concepto, se editan desde el detalle.
+     */
+    otrosAbonos: monto.nullable(),
+    otrosDescuentos: monto.nullable(),
   })
   .partial();
 export type EditarFilaDto = z.infer<typeof editarFilaSchema>;

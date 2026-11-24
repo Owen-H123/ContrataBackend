@@ -14,6 +14,7 @@ import type {
 } from './dto/rrhh.schema.js';
 import { TareoFila } from './entities/tareo-fila.entity.js';
 import {
+  ConceptoMovimiento,
   TareoMovimiento,
   TipoMovimiento,
 } from './entities/tareo-movimiento.entity.js';
@@ -185,8 +186,49 @@ export class TareoService {
 
   async editar(id: string, dto: EditarFilaDto) {
     const fila = await this.obtener(id);
-    Object.assign(fila, dto);
-    await this.filas.save(fila);
+    const { otrosAbonos, otrosDescuentos, ...datos } = dto;
+    if (
+      fila.pagadoEn &&
+      (dto.dias ||
+        dto.pagoDia !== undefined ||
+        otrosAbonos !== undefined ||
+        otrosDescuentos !== undefined)
+    )
+      throw new BadRequestException(
+        'Esta semana ya se le pagó: deshaz el pago para cambiar los montos',
+      );
+    await this.filas.manager.transaction(async (em) => {
+      Object.assign(fila, datos);
+      await em.save(fila);
+      const montoRapido = async (
+        tipo: TipoMovimiento,
+        monto: number | null | undefined,
+      ) => {
+        if (monto === undefined) return;
+        const actuales = await em.findBy(TareoMovimiento, {
+          filaId: fila.id,
+          tipo,
+        });
+        if (actuales.length > 1)
+          throw new BadRequestException(
+            `Esta fila tiene varios ${tipo === TipoMovimiento.ABONO ? 'abonos' : 'descuentos'}: edítalos desde el detalle`,
+          );
+        if (actuales.length)
+          await em.delete(TareoMovimiento, { id: actuales[0].id });
+        if (monto && monto > 0)
+          await em.save(
+            em.create(TareoMovimiento, {
+              filaId: fila.id,
+              tipo,
+              concepto: actuales[0]?.concepto ?? ConceptoMovimiento.OTRO,
+              monto,
+              nota: actuales[0]?.nota ?? null,
+            }),
+          );
+      };
+      await montoRapido(TipoMovimiento.ABONO, otrosAbonos);
+      await montoRapido(TipoMovimiento.DESCUENTO, otrosDescuentos);
+    });
     return this.semana(fila.semana);
   }
 
