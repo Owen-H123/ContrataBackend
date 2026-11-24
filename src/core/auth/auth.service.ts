@@ -16,7 +16,7 @@ const HASH_SENUELO = bcrypt.hashSync(crypto.randomUUID(), 12);
 
 export interface SesionDto {
   accessToken: string;
-  usuario: Pick<Usuario, 'id' | 'nombre' | 'usuario' | 'rol'>;
+  usuario: Pick<Usuario, 'id' | 'nombre' | 'usuario' | 'rol' | 'permisos'>;
 }
 
 @Injectable()
@@ -56,6 +56,7 @@ export class AuthService {
         nombre: usuario.nombre,
         usuario: usuario.usuario,
         rol: usuario.rol,
+        permisos: usuario.permisos ?? [],
       },
     };
   }
@@ -70,6 +71,7 @@ export class AuthService {
       nombre: usuario.nombre,
       usuario: usuario.usuario,
       rol: usuario.rol,
+      permisos: usuario.permisos ?? [],
     };
   }
 
