@@ -14,6 +14,8 @@ import { ComentarioVisita } from '../../modules/execution/visitas/entities/comen
 import { Trabajador } from '../../modules/rrhh/entities/trabajador.entity.js';
 import { TareoFila } from '../../modules/rrhh/entities/tareo-fila.entity.js';
 import { TareoMovimiento } from '../../modules/rrhh/entities/tareo-movimiento.entity.js';
+import { SolicitudDinero } from '../../modules/finanzas/solicitudes/entities/solicitud-dinero.entity.js';
+import { ArchivoSolicitud } from '../../modules/finanzas/solicitudes/entities/archivo-solicitud.entity.js';
 
 /**
  * Lista única de entidades. La usan la aplicación y la línea de comandos de
@@ -36,4 +38,6 @@ export const entities = [
   Trabajador,
   TareoFila,
   TareoMovimiento,
+  SolicitudDinero,
+  ArchivoSolicitud,
 ];
