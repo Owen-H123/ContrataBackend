@@ -165,6 +165,17 @@ Es la **inspección previa** de un sitio, sin orden de compra: puede terminar en
 - Un técnico solo ve las suyas (otra visita le da 404); ADMIN y SUPERVISOR ven todas. SUPERVISOR solo consulta.
 - `faltantes` indica lo que conviene completar (ubicación, fotos fijas, hallazgos con fotos), pero no bloquea el cambio de estado.
 
+### RRHH (solo ADMIN por ahora)
+
+- `GET/POST /rrhh/personal`, `PATCH /rrhh/personal/:id`: ficha del trabajador. `tipo` `JORNAL` (con `pagoDia`) o `FIJO` (con `sueldo` y `periodicidad` `QUINCENAL`/`MENSUAL`). El DNI no se repite.
+- `GET /rrhh/tareo?semana=AAAA-MM-DD` (un domingo): la semana con sus filas, cuentas y totales. Cada mutación devuelve la semana completa.
+- `POST /rrhh/tareo/filas` (`semana`, `trabajadorIds`), `POST /rrhh/tareo/copiar-anterior`, `PATCH /rrhh/tareo/filas/:id` (días, pago/día, cargo, retenido, comentario), `PATCH …/:id/pago` (`pagadoEn` o `null` para deshacer), `DELETE …/:id`.
+- `POST /rrhh/tareo/filas/:id/movimientos` y `DELETE /rrhh/tareo/movimientos/:id`: abonos y descuentos con concepto.
+- `GET /rrhh/tareo/resumen?mes=AAAA-MM`: total por trabajador. Cada día cuenta en el mes en que cae; abonos y descuentos, en el mes del sábado de su semana.
+- No se paga una semana retenida; una semana pagada no cambia días ni se quita.
+
+**Importar el Excel de tareo:** `pnpm importar:tareo "C:/…/TAREO 2026.xlsx"` muestra el reporte (totales por hoja comparados con el Excel, personal unido, posibles duplicados, DNIs repetidos) sin guardar. Con `--guardar` lo carga. Se puede repetir: reemplaza las semanas, no duplica. Los nombres que son la misma persona pero se escriben muy distinto se agregan a `EQUIVALENCIAS` en `seeds/importar-tareo.ts`.
+
 ### Fotos
 
 1. `POST /informes/:id/evidencias` con `tipo` (`PANORAMICA`, `ESTACION`, `EPP`, o `ACTIVIDAD` con `itemId` y `etapa`), `nombreArchivo`, `tipoContenido` (JPG, PNG, WEBP o HEIC), `bytes` (máx. 25 MB) y opcionalmente `comentario` y `tomadaEn`.
@@ -220,6 +231,7 @@ Sin estas variables la API arranca igual; las rutas de fotos responden 503 hasta
 | `pnpm migration:run` | Aplica las migraciones pendientes |
 | `pnpm migration:revert` | Deshace la última migración |
 | `pnpm seed` | Crea el primer administrador |
+| `pnpm importar:tareo "ruta.xlsx" [--guardar]` | Revisa (y con `--guardar` carga) el Excel de tareo en RRHH |
 | `pnpm test` | Pruebas unitarias |
 | `pnpm test:e2e` | Pruebas de extremo a extremo (necesitan base con migraciones y seed) |
 | `pnpm lint` | Revisión estática |

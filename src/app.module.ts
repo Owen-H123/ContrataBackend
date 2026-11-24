@@ -13,6 +13,7 @@ import { UsuariosModule } from './modules/core/usuarios/usuarios.module.js';
 import { MasterModule } from './modules/master/master.module.js';
 import { PlanningModule } from './modules/planning/planning.module.js';
 import { ExecutionModule } from './modules/execution/execution.module.js';
+import { RrhhModule } from './modules/rrhh/rrhh.module.js';
 import { StorageModule } from './services/storage/storage.module.js';
 
 @Module({
@@ -27,6 +28,7 @@ import { StorageModule } from './services/storage/storage.module.js';
     MasterModule,
     PlanningModule,
     ExecutionModule,
+    RrhhModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
