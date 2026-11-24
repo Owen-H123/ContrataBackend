@@ -101,15 +101,18 @@ interface Persona {
   pagoDia: number;
   ultima: string;
   sueldoQuincenal: number | null;
+  /** Nota para la ficha (DNI que en el Excel también usa otra persona). */
+  observacion: string | null;
+  /** DNI con que aparece en el Excel, aunque lo use otra persona. */
+  dniExcel: string | null;
 }
 const personas: Persona[] = [];
 const conflictosDni: string[] = [];
 const ordenadas = [...filas].sort((a, b) => a.inicio.localeCompare(b.inicio));
 const personaDe = new Map<FilaExcel, Persona>();
+/** Con el mismo DNI solo se une si el nombre es el mismo (no basta compartir apellidos). */
 const parecido = (p: Persona, nombre: string) =>
-  [...p.alias].some(
-    (a) => mismoNombre(a, nombre) || compartidas(a, nombre) >= 2,
-  );
+  [...p.alias].some((a) => mismoNombre(a, nombre));
 
 /**
  * Nombres que son la misma persona aunque estén escritos muy distinto. Se revisaron a mano
@@ -147,7 +150,6 @@ for (const f of ordenadas) {
       (dniDudoso || !f.dni || !x.dni || f.dni === x.dni) &&
       [...x.alias].some((a) => mismoNombre(a, f.nombres)),
   );
-  if (dniDudoso) f.dni = null;
   if (!p) {
     p = {
       nombres: f.nombres,
@@ -157,13 +159,22 @@ for (const f of ordenadas) {
       pagoDia: 0,
       ultima: '',
       sueldoQuincenal: null,
+      observacion: null,
+      dniExcel: null,
     };
     personas.push(p);
   }
   p.alias.add(f.nombres);
-  // Un DNI ya usado por otra persona no se repite (la ficha lo exige único).
-  if (!p.dni && f.dni && !personas.some((x) => x !== p && x.dni === f.dni))
-    p.dni = f.dni;
+  // El DNI es único: si ya lo tiene otra persona, esta queda sin DNI y con una nota
+  // para revisar en Personal.
+  if (f.dni && !p.dni) {
+    const duenio = personas.find((x) => x !== p && x.dni === f.dni);
+    if (!duenio) p.dni = f.dni;
+    else if (!p.dniExcel) {
+      p.dniExcel = f.dni;
+      p.observacion = `En el Excel tenía el DNI ${f.dni}, que también aparece para ${limpiarNombre(duenio.nombres)}. Revisa cuál es el correcto.`;
+    }
+  }
   if (palabras(f.nombres).length > palabras(p.nombres).length)
     p.nombres = f.nombres;
   if (f.inicio >= p.ultima) {
@@ -323,6 +334,13 @@ if (dudas.length) {
   );
   for (const d of dudas) console.log(`  ${d}`);
 }
+const conNota = personas.filter((p) => p.observacion);
+if (conNota.length) {
+  console.log(`
+Entran sin DNI y con aviso en Personal (su DNI del Excel ya es de otra persona): ${conNota.length}`);
+  for (const p of conNota)
+    console.log(`  ${limpiarNombre(p.nombres)}: ${p.observacion}`);
+}
 if (conflictosDni.length) {
   console.log('\nDNI repetido con nombres distintos (revisar en el Excel):');
   for (const c of [...new Set(conflictosDni)]) console.log(`  ${c}`);
@@ -359,10 +377,13 @@ try {
     const idDe = new Map<Persona, string>();
 
     for (const p of personas) {
+      // Por DNI si ambos lo tienen; por nombre solo si a uno le falta (dos DNIs distintos
+      // con el mismo nombre son dos personas).
       let t = existentes.find(
         (e) =>
           (p.dni && e.dni === p.dni) ||
-          [...p.alias].some((a) => mismoNombre(a, e.nombres)),
+          ((!p.dni || !e.dni) &&
+            [...p.alias].some((a) => mismoNombre(a, e.nombres))),
       );
       const fijo = p.sueldoQuincenal !== null;
       if (!t) {
@@ -376,10 +397,11 @@ try {
             sueldo: p.sueldoQuincenal,
             periodicidad: fijo ? PeriodicidadSueldo.QUINCENAL : null,
             activo: true,
+            observacion: p.observacion,
           }),
         );
         existentes.push(t);
-      } else if (!t.dni && p.dni) {
+      } else if (!t.dni && p.dni && !existentes.some((e) => e.dni === p.dni)) {
         t.dni = p.dni;
         await repoT.save(t);
       }

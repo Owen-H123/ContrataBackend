@@ -75,4 +75,11 @@ export class Trabajador extends EntidadBase {
 
   @Column({ type: 'boolean', default: true })
   activo: boolean;
+
+  /**
+   * Algo que revisar en la ficha, por ejemplo: «En el Excel tenía el DNI 12345678, que ya es
+   * de …». Lo deja el importador; se borra al guardar la ficha corregida.
+   */
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  observacion: string | null;
 }

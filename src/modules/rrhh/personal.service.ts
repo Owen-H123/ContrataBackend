@@ -55,6 +55,8 @@ export class PersonalService {
     const t = await this.obtener(id);
     if (dto.dni && dto.dni !== t.dni) await this.exigirDniLibre(dto.dni);
     Object.assign(t, this.limpiar(dto));
+    // Quien guarda la ficha ya la revisó: el aviso del importador se quita.
+    t.observacion = null;
     return this.trabajadores.save(t);
   }
 
