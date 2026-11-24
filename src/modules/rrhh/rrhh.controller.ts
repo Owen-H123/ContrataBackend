@@ -30,6 +30,8 @@ import {
   pagarFilaSchema,
   type ResumenMesDto,
   resumenMesSchema,
+  type SeguimientoDto,
+  seguimientoSchema,
 } from './dto/rrhh.schema.js';
 import { PersonalService } from './personal.service.js';
 import { TareoService } from './tareo.service.js';
@@ -72,6 +74,11 @@ export class RrhhController {
   @Get('tareo')
   semana(@Query({ schema: consultarSemanaSchema }) q: ConsultarSemanaDto) {
     return this.tareo.semana(q.semana);
+  }
+
+  @Get('tareo/seguimiento')
+  seguimiento(@Query({ schema: seguimientoSchema }) q: SeguimientoDto) {
+    return this.tareo.seguimiento(q.desde, q.hasta);
   }
 
   @Get('tareo/resumen')
