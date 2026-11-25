@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { UsuariosModule } from '../../core/usuarios/usuarios.module.js';
 import { NotificacionesModule } from '../../core/notificaciones/notificaciones.module.js';
 import { Sitio } from '../../master/sitios/entities/sitio.entity.js';
 import { ComentarioVisita } from './entities/comentario-visita.entity.js';
@@ -19,6 +20,7 @@ import { VisitasService } from './visitas.service.js';
       Sitio,
     ]),
     NotificacionesModule,
+    UsuariosModule,
   ],
   controllers: [VisitasController],
   providers: [VisitasService],
