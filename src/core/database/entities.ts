@@ -13,6 +13,8 @@ import { FotoVisita } from '../../modules/execution/visitas/entities/foto-visita
 import { ComentarioVisita } from '../../modules/execution/visitas/entities/comentario-visita.entity.js';
 import { Trabajador } from '../../modules/rrhh/entities/trabajador.entity.js';
 import { TareoFila } from '../../modules/rrhh/entities/tareo-fila.entity.js';
+import { Comprobante } from '../../modules/finanzas/contabilidad/entities/comprobante.entity.js';
+import { PagoComprobante } from '../../modules/finanzas/contabilidad/entities/pago-comprobante.entity.js';
 import { EventoTrabajo } from '../../modules/planning/trabajos/entities/evento-trabajo.entity.js';
 import { RevisionPresupuesto } from '../../modules/planning/trabajos/entities/revision-presupuesto.entity.js';
 import { Trabajo } from '../../modules/planning/trabajos/entities/trabajo.entity.js';
@@ -52,6 +54,8 @@ export const entities = [
   Trabajo,
   RevisionPresupuesto,
   EventoTrabajo,
+  Comprobante,
+  PagoComprobante,
   SolicitudDinero,
   ArchivoSolicitud,
 ];
