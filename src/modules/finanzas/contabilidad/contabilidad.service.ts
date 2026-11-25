@@ -230,6 +230,7 @@ export class ContabilidadService {
       if (!c) throw new NotFoundException('El comprobante no existe');
       await this.validar(em, dto);
       const trabajoAntes = c.trabajoId;
+      const codigoAntes = `${c.serie}-${c.numero}`;
       Object.assign(c, dto);
       await this.sinRepetir(em, c.tipo, c, c.id);
       if (Math.abs(c.baseImponible + c.igv + c.noGravado - c.total) > 0.05)
@@ -237,7 +238,7 @@ export class ContabilidadService {
       await em.save(c);
       await this.sincronizarTrabajo(em, c.trabajoId, usuario);
       if (trabajoAntes && trabajoAntes !== c.trabajoId)
-        await this.sincronizarTrabajo(em, trabajoAntes, usuario);
+        await this.sincronizarTrabajo(em, trabajoAntes, usuario, [codigoAntes]);
     });
     return this.obtener(id);
   }
@@ -252,7 +253,9 @@ export class ContabilidadService {
           'Tiene pagos registrados: quítalos o márcalo como anulado',
         );
       await em.delete(Comprobante, id);
-      await this.sincronizarTrabajo(em, c.trabajoId, usuario);
+      await this.sincronizarTrabajo(em, c.trabajoId, usuario, [
+        `${c.serie}-${c.numero}`,
+      ]);
     });
     return { ok: true };
   }
@@ -333,6 +336,8 @@ export class ContabilidadService {
     em: EntityManager,
     trabajoId: string | null,
     usuario: UsuarioAutenticado,
+    /** Facturas borradas o pasadas a otro trabajo (las anuladas se buscan solas). */
+    quitadas: string[] = [],
   ) {
     if (!trabajoId) return;
     const t = await em.findOneBy(Trabajo, { id: trabajoId });
@@ -344,7 +349,37 @@ export class ContabilidadService {
         order: { fechaEmision: 'ASC' },
       })
     ).map(calcularComprobante);
-    if (!ventas.length) return;
+    if (!ventas.length) {
+      // Si la factura que marcó el trabajo se anuló o borró, el trabajo vuelve atrás.
+      const anuladas = await em.find(Comprobante, {
+        where: { trabajoId, tipo: TipoComprobante.VENTA, anulado: true },
+      });
+      const codigos = [
+        ...quitadas,
+        ...anuladas.map((a) => `${a.serie}-${a.numero}`),
+      ];
+      const marcadas = (t.facturaNumero ?? '').split(', ');
+      if (!codigos.some((c) => marcadas.includes(c))) return;
+      Object.assign(t, {
+        facturaNumero: null,
+        facturadoEn: null,
+        montoFacturado: null,
+        cobradoEn: null,
+        montoCobrado: null,
+      });
+      t.etapa = calcularEtapa(t);
+      await em.save(t);
+      await em.save(
+        em.create(EventoTrabajo, {
+          trabajoId: t.id,
+          tipo: 'facturadoEn',
+          texto: 'Se quitó la factura (anulada o borrada en Contabilidad)',
+          usuarioId: usuario.id,
+          usuarioNombre: usuario.nombre,
+        }),
+      );
+      return;
+    }
     const antes = {
       facturaNumero: t.facturaNumero,
       facturadoEn: t.facturadoEn,
