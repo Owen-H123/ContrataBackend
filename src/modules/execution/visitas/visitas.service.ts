@@ -17,10 +17,12 @@ import { Rol } from '../../../shared/enums/rol.enum.js';
 import { StorageService } from '../../../services/storage/storage.service.js';
 import { TipoNotificacion } from '../../core/notificaciones/entities/notificacion.entity.js';
 import { NotificacionesService } from '../../core/notificaciones/notificaciones.service.js';
+import { UsuariosService } from '../../core/usuarios/usuarios.service.js';
 import { Sitio } from '../../master/sitios/entities/sitio.entity.js';
 import { EXTENSIONES, MAX_BYTES } from '../evidencias/dto/evidencia.schema.js';
 import { coordenadasDeEnlace } from '../informes/enlace-maps.js';
 import type {
+  AsignarTecnicoVisitaDto,
   CambiarEstadoVisitaDto,
   ComentarVisitaDto,
   CrearHallazgoDto,
@@ -164,6 +166,7 @@ export class VisitasService {
     private readonly sitios: Repository<Sitio>,
     private readonly storage: StorageService,
     private readonly notificaciones: NotificacionesService,
+    private readonly usuarios: UsuariosService,
   ) {}
 
   async listar(
@@ -293,15 +296,59 @@ export class VisitasService {
     const sitioId = dto.sitioId
       ? await this.exigirSitio(dto.sitioId)
       : await this.crearSitio(dto.sitioNuevo!);
+    // Un ADMIN puede dejarla a cargo de un técnico; si no, queda a nombre de quien la registra.
+    const tecnicoId =
+      usuario.rol === Rol.ADMIN && dto.tecnicoId
+        ? (await this.usuarios.exigirTecnicosActivos([dto.tecnicoId]))[0].id
+        : usuario.id;
     const { id } = await this.visitas.save(
       this.visitas.create({
         sitioId,
-        tecnicoId: usuario.id,
+        tecnicoId,
         fecha: dto.fecha,
         observaciones: dto.observaciones || null,
       }),
     );
-    return this.obtener(id, usuario);
+    const detalle = await this.obtener(id, usuario);
+    if (tecnicoId !== usuario.id) {
+      await this.avisarAsignacion(detalle, tecnicoId, usuario);
+    }
+    return detalle;
+  }
+
+  /** ADMIN: pasa la visita a otro técnico, que desde ahora la ve y la edita. */
+  async asignarTecnico(
+    id: string,
+    dto: AsignarTecnicoVisitaDto,
+    usuario: UsuarioAutenticado,
+  ): Promise<VisitaDetalle> {
+    const visita = await this.buscarParaVer(id, usuario);
+    if (visita.tecnicoId === dto.tecnicoId) return this.obtener(id, usuario);
+    const [tecnico] = await this.usuarios.exigirTecnicosActivos([
+      dto.tecnicoId,
+    ]);
+    await this.visitas.update(visita.id, { tecnicoId: tecnico.id });
+    const detalle = await this.obtener(id, usuario);
+    await this.avisarAsignacion(detalle, tecnico.id, usuario);
+    return detalle;
+  }
+
+  /** Avisa al técnico que le asignaron la visita (sin tipo nuevo: usa el aviso de visitas). */
+  private avisarAsignacion(
+    visita: VisitaDetalle,
+    tecnicoId: string,
+    usuario: UsuarioAutenticado,
+  ): Promise<void> {
+    return this.notificaciones.avisar(
+      [tecnicoId],
+      {
+        tipo: TipoNotificacion.VISITA_ESTADO,
+        titulo: `Te asignaron una visita técnica: ${visita.sitio.codigo}`,
+        detalle: `${visita.sitio.nombre} · ${visita.fecha}`,
+        visitaId: visita.id,
+      },
+      usuario.id,
+    );
   }
 
   async editar(
