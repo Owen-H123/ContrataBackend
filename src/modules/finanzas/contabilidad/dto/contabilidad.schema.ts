@@ -122,6 +122,13 @@ export const pagoSchema = z.object({
 });
 export type PagoDto = z.infer<typeof pagoSchema>;
 
+export const mesSchema = z.object({
+  mes: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'El mes no es válido (AAAA-MM)'),
+});
+export type MesDto = z.infer<typeof mesSchema>;
+
 export const contraparteSchema = z.object({
   q: z.string().trim().min(2).max(60),
 });

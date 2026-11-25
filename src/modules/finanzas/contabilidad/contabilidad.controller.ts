@@ -7,13 +7,16 @@ import {
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import type { UsuarioAutenticado } from '../../../core/auth/types/usuario-autenticado.js';
 import { CurrentUser } from '../../../core/decorators/current-user.decorator.js';
 import { Roles } from '../../../core/decorators/roles.decorator.js';
 import { Rol } from '../../../shared/enums/rol.enum.js';
 import { idSchema } from '../../../shared/validation/id.schema.js';
 import { ContabilidadService } from './contabilidad.service.js';
+import { ReportesService } from './reportes.service.js';
 import {
   type ActualizarComprobanteDto,
   actualizarComprobanteSchema,
@@ -23,6 +26,8 @@ import {
   crearComprobanteSchema,
   type FiltrosComprobanteDto,
   filtrosComprobanteSchema,
+  type MesDto,
+  mesSchema,
   type PagoDto,
   pagoSchema,
 } from './dto/contabilidad.schema.js';
@@ -31,7 +36,34 @@ import {
 @Roles(Rol.ADMIN)
 @Controller('contabilidad')
 export class ContabilidadController {
-  constructor(private readonly contabilidad: ContabilidadService) {}
+  constructor(
+    private readonly contabilidad: ContabilidadService,
+    private readonly reportes: ReportesService,
+  ) {}
+
+  /** Todos los pagos del mes: planilla, sueldos, solicitudes y proveedores. */
+  @Get('pagos')
+  pagos(@Query({ schema: mesSchema }) q: MesDto) {
+    return this.reportes.pagos(q.mes);
+  }
+
+  @Get('panel')
+  panel(@Query({ schema: mesSchema }) q: MesDto) {
+    return this.reportes.panel(q.mes);
+  }
+
+  /** Excel del mes para el contador. */
+  @Get('excel')
+  async excel(@Query({ schema: mesSchema }) q: MesDto, @Res() res: Response) {
+    const archivo = await this.reportes.excel(q.mes);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="contabilidad-${q.mes}.xlsx"`,
+      'Content-Length': String(archivo.length),
+    });
+    res.end(archivo);
+  }
 
   @Get('comprobantes')
   listar(
