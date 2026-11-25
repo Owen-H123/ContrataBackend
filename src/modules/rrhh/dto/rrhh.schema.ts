@@ -247,3 +247,12 @@ export const movimientoFijoSchema = crearMovimientoSchema.extend({
   fecha: z.iso.date('La fecha no es válida').nullable().optional(),
 });
 export type MovimientoFijoDto = z.infer<typeof movimientoFijoSchema>;
+
+export const agregarPagoFijoSchema = z.object({
+  mes: consultarMesSchema.shape.mes,
+  trabajadorId: z.uuid('Elige al trabajador'),
+  sueldo: monto.refine((n) => n > 0, 'Indica el sueldo'),
+  periodicidad: z.enum(PeriodicidadSueldo),
+  actualizarFicha: z.boolean().default(true),
+});
+export type AgregarPagoFijoDto = z.infer<typeof agregarPagoFijoSchema>;

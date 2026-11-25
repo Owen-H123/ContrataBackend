@@ -16,6 +16,8 @@ import { Roles } from '../../core/decorators/roles.decorator.js';
 import { Rol } from '../../shared/enums/rol.enum.js';
 import { idSchema } from '../../shared/validation/id.schema.js';
 import {
+  type AgregarPagoFijoDto,
+  agregarPagoFijoSchema,
   type ActualizarPrestamoDto,
   actualizarPrestamoSchema,
   type ActualizarTrabajadorDto,
@@ -249,6 +251,13 @@ export class RrhhController {
   @Get('sueldos-fijos')
   sueldosDelMes(@Query({ schema: consultarMesSchema }) dto: ConsultarMesDto) {
     return this.fijos.mes(dto.mes);
+  }
+
+  @Post('sueldos-fijos')
+  agregarPagoFijo(
+    @Body({ schema: agregarPagoFijoSchema }) dto: AgregarPagoFijoDto,
+  ) {
+    return this.fijos.agregar(dto);
   }
 
   @Patch('sueldos-fijos/:id')

@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -7,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { redondear2 } from '../../shared/entities/numerico.transformer.js';
 import type {
+  AgregarPagoFijoDto,
   EditarPagoFijoDto,
   MovimientoFijoDto,
   PagarFilaDto,
@@ -154,6 +156,48 @@ export class SueldosFijosService {
         .values(nuevos)
         .orIgnore()
         .execute();
+  }
+
+  /**
+   * Agrega a alguien a los sueldos del mes (aunque en su ficha no esté como fijo). Con
+   * «actualizarFicha» queda como fijo con ese sueldo y aparece solo los meses siguientes.
+   */
+  async agregar(dto: AgregarPagoFijoDto) {
+    const hoy = new Date().toLocaleDateString('en-CA').slice(0, 7);
+    if (dto.mes > hoy)
+      throw new BadRequestException('Ese mes todavía no empieza');
+    const t = await this.trabajadores.findOneBy({ id: dto.trabajadorId });
+    if (!t) throw new NotFoundException('El trabajador no existe');
+    if (!t.activo)
+      throw new BadRequestException(
+        'Está inactivo en Personal: actívalo primero',
+      );
+    const ya = await this.pagos.countBy({
+      mes: dto.mes,
+      trabajadorId: t.id,
+    });
+    if (ya) throw new ConflictException('Ya está en los sueldos de este mes');
+    const partes =
+      dto.periodicidad === PeriodicidadSueldo.MENSUAL ? [0] : [1, 2];
+    await this.pagos.manager.transaction(async (em) => {
+      await em.save(
+        partes.map((parte) =>
+          em.create(PagoFijo, {
+            trabajadorId: t.id,
+            mes: dto.mes,
+            parte,
+            sueldo: dto.sueldo,
+          }),
+        ),
+      );
+      if (dto.actualizarFicha)
+        await em.update(Trabajador, t.id, {
+          tipo: TipoTrabajador.FIJO,
+          sueldo: dto.sueldo,
+          periodicidad: dto.periodicidad,
+        });
+    });
+    return this.mes(dto.mes);
   }
 
   async editar(id: string, dto: EditarPagoFijoDto) {
