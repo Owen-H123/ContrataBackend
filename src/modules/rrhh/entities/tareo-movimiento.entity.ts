@@ -8,6 +8,7 @@ import {
 } from 'typeorm';
 import { EntidadBase } from '../../../shared/entities/base.entity.js';
 import { numerico } from '../../../shared/entities/numerico.transformer.js';
+import { Prestamo } from './prestamo.entity.js';
 import { TareoFila } from './tareo-fila.entity.js';
 
 /** Suma o resta al pago de la semana. */
@@ -48,4 +49,13 @@ export class TareoMovimiento extends EntidadBase {
 
   @Column({ type: 'varchar', length: 200, nullable: true })
   nota: string | null;
+
+  /** Si es la cuota de un préstamo, cuál; así se calcula su saldo. */
+  @Index()
+  @Column({ name: 'prestamo_id', type: 'uuid', nullable: true })
+  prestamoId: string | null;
+
+  @ManyToOne(() => Prestamo, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'prestamo_id' })
+  prestamo?: Relation<Prestamo>;
 }

@@ -13,6 +13,7 @@ import { FotoVisita } from '../../modules/execution/visitas/entities/foto-visita
 import { ComentarioVisita } from '../../modules/execution/visitas/entities/comentario-visita.entity.js';
 import { Trabajador } from '../../modules/rrhh/entities/trabajador.entity.js';
 import { TareoFila } from '../../modules/rrhh/entities/tareo-fila.entity.js';
+import { Prestamo } from '../../modules/rrhh/entities/prestamo.entity.js';
 import { TareoMovimiento } from '../../modules/rrhh/entities/tareo-movimiento.entity.js';
 import { VoucherTareo } from '../../modules/rrhh/entities/voucher-tareo.entity.js';
 import { SolicitudDinero } from '../../modules/finanzas/solicitudes/entities/solicitud-dinero.entity.js';
@@ -40,6 +41,7 @@ export const entities = [
   TareoFila,
   TareoMovimiento,
   VoucherTareo,
+  Prestamo,
   SolicitudDinero,
   ArchivoSolicitud,
 ];
