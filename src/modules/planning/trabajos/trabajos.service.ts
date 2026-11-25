@@ -103,6 +103,8 @@ function resumen(t: Trabajo) {
     cancelado: t.cancelado,
     canceladoEn: t.canceladoEn,
     comentario: t.comentario,
+    observacion: t.observacion,
+    importadoDe: t.importadoDe,
     actualizadoEn: t.actualizadoEn,
   };
 }
@@ -136,6 +138,7 @@ export class TrabajosService {
       });
     if (f.clienteId) qb.andWhere('t.cliente_id = :c', { c: f.clienteId });
     if (f.area) qb.andWhere('t.area = :a', { a: f.area });
+    if (f.revisar) qb.andWhere('t.observacion IS NOT NULL');
     if (f.q)
       qb.andWhere(
         new Brackets((w) =>
@@ -173,6 +176,7 @@ export class TrabajosService {
     return {
       trabajos: f.etapa ? todos.filter((t) => t.etapa === f.etapa) : todos,
       porEtapa,
+      paraRevisar: todos.filter((t) => t.observacion).length,
       indicadores: {
         presupuesto: indicador(GRUPOS.presupuesto),
         porEjecutar: indicador(GRUPOS.porEjecutar),

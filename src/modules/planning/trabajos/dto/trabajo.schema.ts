@@ -56,6 +56,8 @@ const campos = z.object({
   cancelado: z.enum(MotivoCancelacion).nullable().optional(),
   canceladoEn: fechaOpcional,
   comentario: textoOpcional(2000),
+  /** null = «ya lo revisé». */
+  observacion: textoOpcional(300),
 });
 
 export const crearTrabajoSchema = campos;
@@ -70,6 +72,7 @@ export const filtrosTrabajoSchema = z.object({
   area: z.enum(AreaTrabajo).optional(),
   etapa: z.enum(EtapaTrabajo).optional(),
   q: z.string().trim().min(1).max(80).optional(),
+  revisar: z.stringbool().optional(),
 });
 export type FiltrosTrabajoDto = z.infer<typeof filtrosTrabajoSchema>;
 

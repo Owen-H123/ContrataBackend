@@ -206,6 +206,20 @@ export class Trabajo extends EntidadBase {
   @Column({ type: 'text', nullable: true })
   comentario: string | null;
 
+  /** Algo que revisar (p. ej. al importar del Excel no se encontró su presupuesto). */
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  observacion: string | null;
+
+  /** Hoja y fila del Excel de donde vino; permite volver a importar sin duplicar. */
+  @Index()
+  @Column({
+    name: 'importado_de',
+    type: 'varchar',
+    length: 120,
+    nullable: true,
+  })
+  importadoDe: string | null;
+
   @OneToMany(() => RevisionPresupuesto, (r) => r.trabajo)
   revisiones?: Relation<RevisionPresupuesto>[];
 
