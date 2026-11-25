@@ -22,6 +22,8 @@ import {
   actualizarTrabajadorSchema,
   type AgregarFilaDto,
   agregarFilaSchema,
+  type ConsultarMesDto,
+  consultarMesSchema,
   type ConsultarSemanaDto,
   consultarSemanaSchema,
   type CrearPrestamoDto,
@@ -32,6 +34,10 @@ import {
   crearMovimientoSchema,
   type CrearTrabajadorDto,
   crearTrabajadorSchema,
+  type EditarPagoFijoDto,
+  editarPagoFijoSchema,
+  type MovimientoFijoDto,
+  movimientoFijoSchema,
   type EditarFilaDto,
   editarFilaSchema,
   type FiltrosPrestamosDto,
@@ -48,6 +54,7 @@ import {
   subirVoucherSchema,
 } from './dto/rrhh.schema.js';
 import { PersonalService } from './personal.service.js';
+import { SueldosFijosService } from './sueldos-fijos.service.js';
 import { PrestamosService } from './prestamos.service.js';
 import { TareoExcelService } from './tareo-excel.service.js';
 import { TareoService } from './tareo.service.js';
@@ -61,6 +68,7 @@ export class RrhhController {
     private readonly tareo: TareoService,
     private readonly excel: TareoExcelService,
     private readonly prestamos: PrestamosService,
+    private readonly fijos: SueldosFijosService,
   ) {}
 
   // ---------- Personal ----------
@@ -234,5 +242,46 @@ export class RrhhController {
   @Delete('prestamos/:id')
   eliminarPrestamo(@Param('id', { schema: idSchema }) id: string) {
     return this.prestamos.eliminar(id);
+  }
+
+  // ---------- Sueldos fijos ----------
+
+  @Get('sueldos-fijos')
+  sueldosDelMes(@Query({ schema: consultarMesSchema }) dto: ConsultarMesDto) {
+    return this.fijos.mes(dto.mes);
+  }
+
+  @Patch('sueldos-fijos/:id')
+  editarPagoFijo(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: editarPagoFijoSchema }) dto: EditarPagoFijoDto,
+  ) {
+    return this.fijos.editar(id, dto);
+  }
+
+  @Patch('sueldos-fijos/:id/pago')
+  pagarFijo(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: pagarFilaSchema }) dto: PagarFilaDto,
+  ) {
+    return this.fijos.pagar(id, dto);
+  }
+
+  @Delete('sueldos-fijos/:id')
+  quitarPagoFijo(@Param('id', { schema: idSchema }) id: string) {
+    return this.fijos.quitar(id);
+  }
+
+  @Post('sueldos-fijos/:id/movimientos')
+  agregarMovimientoFijo(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: movimientoFijoSchema }) dto: MovimientoFijoDto,
+  ) {
+    return this.fijos.agregarMovimiento(id, dto);
+  }
+
+  @Delete('sueldos-fijos/movimientos/:id')
+  quitarMovimientoFijo(@Param('id', { schema: idSchema }) id: string) {
+    return this.fijos.quitarMovimiento(id);
   }
 }

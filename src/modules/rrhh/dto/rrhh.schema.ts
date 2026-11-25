@@ -224,3 +224,26 @@ export type FiltrosPrestamosDto = z.infer<typeof filtrosPrestamosSchema>;
 /** Cuota de un préstamo en una semana; 0 la quita. */
 export const cuotaSemanaSchema = z.object({ monto });
 export type CuotaSemanaDto = z.infer<typeof cuotaSemanaSchema>;
+
+// ---------- Sueldos fijos ----------
+
+export const consultarMesSchema = z.object({
+  mes: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'El mes no es válido (AAAA-MM)'),
+});
+export type ConsultarMesDto = z.infer<typeof consultarMesSchema>;
+
+export const editarPagoFijoSchema = z
+  .object({
+    sueldo: monto,
+    retenido: z.boolean(),
+    comentario: textoOpcional(500),
+  })
+  .partial();
+export type EditarPagoFijoDto = z.infer<typeof editarPagoFijoSchema>;
+
+export const movimientoFijoSchema = crearMovimientoSchema.extend({
+  fecha: z.iso.date('La fecha no es válida').nullable().optional(),
+});
+export type MovimientoFijoDto = z.infer<typeof movimientoFijoSchema>;
