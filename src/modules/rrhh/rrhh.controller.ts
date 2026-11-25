@@ -7,7 +7,9 @@ import {
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { Roles } from '../../core/decorators/roles.decorator.js';
 import { Rol } from '../../shared/enums/rol.enum.js';
 import { idSchema } from '../../shared/validation/id.schema.js';
@@ -34,6 +36,7 @@ import {
   seguimientoSchema,
 } from './dto/rrhh.schema.js';
 import { PersonalService } from './personal.service.js';
+import { TareoExcelService } from './tareo-excel.service.js';
 import { TareoService } from './tareo.service.js';
 
 /** Recursos humanos: personal y tareo. Por ahora solo el administrador. */
@@ -43,6 +46,7 @@ export class RrhhController {
   constructor(
     private readonly personal: PersonalService,
     private readonly tareo: TareoService,
+    private readonly excel: TareoExcelService,
   ) {}
 
   // ---------- Personal ----------
@@ -79,6 +83,22 @@ export class RrhhController {
   @Get('tareo/seguimiento')
   seguimiento(@Query({ schema: seguimientoSchema }) q: SeguimientoDto) {
     return this.tareo.seguimiento(q.desde, q.hasta);
+  }
+
+  /** El tareo del mes en Excel, con el formato de la hoja que usaba RYSCOM. */
+  @Get('tareo/excel')
+  async exportar(
+    @Query({ schema: resumenMesSchema }) q: ResumenMesDto,
+    @Res() res: Response,
+  ) {
+    const archivo = await this.excel.exportarMes(q.mes);
+    res.set({
+      'Content-Type':
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'Content-Disposition': `attachment; filename="tareo-${q.mes}.xlsx"`,
+      'Content-Length': String(archivo.length),
+    });
+    res.end(archivo);
   }
 
   @Get('tareo/resumen')
