@@ -23,6 +23,7 @@ import {
 import { Trabajador } from './entities/trabajador.entity.js';
 import { VoucherTareo } from './entities/voucher-tareo.entity.js';
 import { StorageService } from '../../services/storage/storage.service.js';
+import { PrestamosService } from './prestamos.service.js';
 
 /** Voucher en foto o PDF, hasta 10 MB; máximo 3 por semana de cada trabajador. */
 export const TIPOS_VOUCHER = {
@@ -108,6 +109,7 @@ export class TareoService {
     @InjectRepository(VoucherTareo)
     private readonly vouchers: Repository<VoucherTareo>,
     private readonly storage: StorageService,
+    private readonly prestamos: PrestamosService,
   ) {}
 
   /** La semana completa: sus 7 fechas, las filas y los totales. */
@@ -134,11 +136,36 @@ export class TareoService {
           : null,
       })),
     );
+    const prestamos = await this.prestamos.deTrabajadores(
+      [...new Set(filas.map((f) => f.trabajadorId))],
+      filas.map((f) => f.id),
+    );
     const calculadas = filas.map((f) => ({
       ...calcularFila(f),
       vouchers: enlaces
         .filter((v) => v.filaId === f.id)
         .map(({ filaId: _f, ...v }) => v),
+      // Préstamos que se le pueden descontar esta semana (o que ya tienen cuota en ella).
+      prestamos: prestamos
+        .filter((p) => p.trabajadorId === f.trabajadorId)
+        .map((p) => ({
+          p,
+          enEsta: p.cuotasEnFilas.find((c) => c.filaId === f.id),
+        }))
+        .filter(
+          ({ p, enEsta }) =>
+            enEsta || (p.estado === 'ACTIVO' && domingoDe(p.fecha) <= f.semana),
+        )
+        .map(({ p, enEsta }) => ({
+          id: p.id,
+          fecha: p.fecha,
+          monto: p.monto,
+          cuota: p.cuota,
+          saldo: p.saldo,
+          porProgramar: p.porProgramar,
+          estaSemana: enEsta?.monto ?? 0,
+          movimientoId: enEsta?.movimientoId ?? null,
+        })),
     }));
     const suma = (k: 'subtotal' | 'abonos' | 'descuentos' | 'total') =>
       redondear2(calculadas.reduce((s, f) => s + f[k], 0));
@@ -196,7 +223,11 @@ export class TareoService {
           dias: [false, false, false, false, false, false, false],
         }),
       );
-    if (nuevas.length) await this.filas.save(nuevas);
+    if (nuevas.length)
+      await this.prestamos.aplicarCuotas(
+        this.filas.manager,
+        await this.filas.save(nuevas),
+      );
     return this.semana(dto.semana);
   }
 
@@ -221,7 +252,11 @@ export class TareoService {
           dias: [false, false, false, false, false, false, false],
         }),
       );
-    if (nuevas.length) await this.filas.save(nuevas);
+    if (nuevas.length)
+      await this.prestamos.aplicarCuotas(
+        this.filas.manager,
+        await this.filas.save(nuevas),
+      );
     return this.semana(semana);
   }
 
@@ -250,6 +285,10 @@ export class TareoService {
           filaId: fila.id,
           tipo,
         });
+        if (actuales.some((m) => m.prestamoId))
+          throw new BadRequestException(
+            'Ese descuento es la cuota de un préstamo: cámbiala en el bloque «Préstamos» del detalle',
+          );
         if (actuales.length > 1)
           throw new BadRequestException(
             `Esta fila tiene varios ${tipo === TipoMovimiento.ABONO ? 'abonos' : 'descuentos'}: edítalos desde el detalle`,
@@ -279,6 +318,16 @@ export class TareoService {
       throw new BadRequestException(
         'Este pago está retenido; quita «retener» antes de marcarlo como pagado',
       );
+    if (dto.pagadoEn) {
+      const conMovimientos = await this.filas.findOne({
+        where: { id },
+        relations: { movimientos: true },
+      });
+      if (conMovimientos && calcularFila(conMovimientos).total < 0)
+        throw new BadRequestException(
+          'Los descuentos superan lo ganado esta semana; baja la cuota del préstamo o el descuento',
+        );
+    }
     fila.pagadoEn = dto.pagadoEn;
     fila.medioPago = dto.pagadoEn ? (dto.medioPago ?? null) : null;
     fila.operacion = dto.pagadoEn ? (dto.operacion ?? null) : null;
@@ -308,6 +357,10 @@ export class TareoService {
       relations: { fila: true },
     });
     if (!m?.fila) throw new NotFoundException('El abono o descuento no existe');
+    if (m.prestamoId && m.fila.pagadoEn)
+      throw new BadRequestException(
+        'Es la cuota de un préstamo en una semana pagada: deshaz el pago primero',
+      );
     await this.movimientos.delete(id);
     return this.semana(m.fila.semana);
   }
@@ -478,6 +531,15 @@ export class TareoService {
           a.trabajador.nombres.localeCompare(b.trabajador.nombres),
         ),
     };
+  }
+
+  /** Cambia la cuota de un préstamo en esta semana; 0 la quita. */
+  async fijarCuotaPrestamo(filaId: string, prestamoId: string, monto: number) {
+    const fila = await this.obtener(filaId);
+    await this.filas.manager.transaction((em) =>
+      this.prestamos.fijarCuota(em, fila, prestamoId, monto),
+    );
+    return this.semana(fila.semana);
   }
 
   // ---------- Voucher del pago de la semana ----------

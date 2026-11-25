@@ -191,3 +191,36 @@ export const subirVoucherSchema = z.object({
     .max(10 * 1024 * 1024, 'El archivo supera 10 MB'),
 });
 export type SubirVoucherDto = z.infer<typeof subirVoucherSchema>;
+
+// ---------- Préstamos ----------
+
+const montoPositivo = monto.refine((n) => n > 0, 'Debe ser mayor que 0');
+
+export const crearPrestamoSchema = z.object({
+  trabajadorId: z.uuid('Elige al trabajador'),
+  fecha: z.iso.date('La fecha no es válida'),
+  monto: montoPositivo,
+  cuota: montoPositivo,
+  nota: textoOpcional(200),
+});
+export type CrearPrestamoDto = z.infer<typeof crearPrestamoSchema>;
+
+export const actualizarPrestamoSchema = z
+  .object({
+    fecha: z.iso.date('La fecha no es válida'),
+    monto: montoPositivo,
+    cuota: montoPositivo,
+    nota: textoOpcional(200),
+  })
+  .partial();
+export type ActualizarPrestamoDto = z.infer<typeof actualizarPrestamoSchema>;
+
+export const filtrosPrestamosSchema = z.object({
+  trabajadorId: z.uuid().optional(),
+  estado: z.enum(['ACTIVO', 'CANCELADO']).optional(),
+});
+export type FiltrosPrestamosDto = z.infer<typeof filtrosPrestamosSchema>;
+
+/** Cuota de un préstamo en una semana; 0 la quita. */
+export const cuotaSemanaSchema = z.object({ monto });
+export type CuotaSemanaDto = z.infer<typeof cuotaSemanaSchema>;

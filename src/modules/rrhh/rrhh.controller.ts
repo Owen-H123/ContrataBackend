@@ -16,18 +16,26 @@ import { Roles } from '../../core/decorators/roles.decorator.js';
 import { Rol } from '../../shared/enums/rol.enum.js';
 import { idSchema } from '../../shared/validation/id.schema.js';
 import {
+  type ActualizarPrestamoDto,
+  actualizarPrestamoSchema,
   type ActualizarTrabajadorDto,
   actualizarTrabajadorSchema,
   type AgregarFilaDto,
   agregarFilaSchema,
   type ConsultarSemanaDto,
   consultarSemanaSchema,
+  type CrearPrestamoDto,
+  crearPrestamoSchema,
+  type CuotaSemanaDto,
+  cuotaSemanaSchema,
   type CrearMovimientoDto,
   crearMovimientoSchema,
   type CrearTrabajadorDto,
   crearTrabajadorSchema,
   type EditarFilaDto,
   editarFilaSchema,
+  type FiltrosPrestamosDto,
+  filtrosPrestamosSchema,
   type FiltrosPersonalDto,
   filtrosPersonalSchema,
   type PagarFilaDto,
@@ -40,6 +48,7 @@ import {
   subirVoucherSchema,
 } from './dto/rrhh.schema.js';
 import { PersonalService } from './personal.service.js';
+import { PrestamosService } from './prestamos.service.js';
 import { TareoExcelService } from './tareo-excel.service.js';
 import { TareoService } from './tareo.service.js';
 
@@ -51,6 +60,7 @@ export class RrhhController {
     private readonly personal: PersonalService,
     private readonly tareo: TareoService,
     private readonly excel: TareoExcelService,
+    private readonly prestamos: PrestamosService,
   ) {}
 
   // ---------- Personal ----------
@@ -179,5 +189,50 @@ export class RrhhController {
   @Delete('tareo/movimientos/:id')
   quitarMovimiento(@Param('id', { schema: idSchema }) id: string) {
     return this.tareo.quitarMovimiento(id);
+  }
+
+  /** Cambia la cuota de un préstamo en esa semana (0 la quita). */
+  @Patch('tareo/filas/:id/prestamos/:prestamoId')
+  fijarCuota(
+    @Param('id', { schema: idSchema }) id: string,
+    @Param('prestamoId', { schema: idSchema }) prestamoId: string,
+    @Body({ schema: cuotaSemanaSchema }) dto: CuotaSemanaDto,
+  ) {
+    return this.tareo.fijarCuotaPrestamo(id, prestamoId, dto.monto);
+  }
+
+  // ---------- Préstamos ----------
+
+  @Get('prestamos')
+  listarPrestamos(
+    @Query({ schema: filtrosPrestamosSchema }) filtros: FiltrosPrestamosDto,
+  ) {
+    return this.prestamos.listar(filtros);
+  }
+
+  @Get('prestamos/:id')
+  detallePrestamo(@Param('id', { schema: idSchema }) id: string) {
+    return this.prestamos.detalle(id);
+  }
+
+  @Post('prestamos')
+  crearPrestamo(
+    @Body({ schema: crearPrestamoSchema }) dto: CrearPrestamoDto,
+    @CurrentUser() usuario: UsuarioAutenticado,
+  ) {
+    return this.prestamos.crear(dto, usuario.id);
+  }
+
+  @Patch('prestamos/:id')
+  actualizarPrestamo(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: actualizarPrestamoSchema }) dto: ActualizarPrestamoDto,
+  ) {
+    return this.prestamos.actualizar(id, dto);
+  }
+
+  @Delete('prestamos/:id')
+  eliminarPrestamo(@Param('id', { schema: idSchema }) id: string) {
+    return this.prestamos.eliminar(id);
   }
 }
