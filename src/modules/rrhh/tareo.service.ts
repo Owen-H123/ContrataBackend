@@ -1,5 +1,7 @@
+import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -19,6 +21,20 @@ import {
   TipoMovimiento,
 } from './entities/tareo-movimiento.entity.js';
 import { Trabajador } from './entities/trabajador.entity.js';
+import { VoucherTareo } from './entities/voucher-tareo.entity.js';
+import { StorageService } from '../../services/storage/storage.service.js';
+
+/** Voucher en foto o PDF, hasta 10 MB; máximo 3 por semana de cada trabajador. */
+export const TIPOS_VOUCHER = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/heic': 'heic',
+  'image/heif': 'heif',
+  'application/pdf': 'pdf',
+} as const;
+const MAX_BYTES_VOUCHER = 10 * 1024 * 1024;
+const MAX_VOUCHERS = 3;
 
 /** Suma días a una fecha AAAA-MM-DD (en UTC, sin problemas de zona horaria). */
 export function sumarDias(fecha: string, dias: number): string {
@@ -89,6 +105,9 @@ export class TareoService {
     private readonly movimientos: Repository<TareoMovimiento>,
     @InjectRepository(Trabajador)
     private readonly trabajadores: Repository<Trabajador>,
+    @InjectRepository(VoucherTareo)
+    private readonly vouchers: Repository<VoucherTareo>,
+    private readonly storage: StorageService,
   ) {}
 
   /** La semana completa: sus 7 fechas, las filas y los totales. */
@@ -98,7 +117,29 @@ export class TareoService {
       relations: { trabajador: true, movimientos: true },
       order: { trabajador: { nombres: 'ASC' } },
     });
-    const calculadas = filas.map(calcularFila);
+    const vouchers = filas.length
+      ? await this.vouchers.find({
+          where: { filaId: In(filas.map((f) => f.id)), confirmado: true },
+          order: { creadoEn: 'ASC' },
+        })
+      : [];
+    const enlaces = await Promise.all(
+      vouchers.map(async (v) => ({
+        id: v.id,
+        filaId: v.filaId,
+        nombreArchivo: v.nombreArchivo,
+        tipoContenido: v.tipoContenido,
+        url: this.storage.configurado
+          ? await this.storage.urlParaDescargar(v.clave)
+          : null,
+      })),
+    );
+    const calculadas = filas.map((f) => ({
+      ...calcularFila(f),
+      vouchers: enlaces
+        .filter((v) => v.filaId === f.id)
+        .map(({ filaId: _f, ...v }) => v),
+    }));
     const suma = (k: 'subtotal' | 'abonos' | 'descuentos' | 'total') =>
       redondear2(calculadas.reduce((s, f) => s + f[k], 0));
     return {
@@ -437,6 +478,81 @@ export class TareoService {
           a.trabajador.nombres.localeCompare(b.trabajador.nombres),
         ),
     };
+  }
+
+  // ---------- Voucher del pago de la semana ----------
+
+  /** Enlace firmado para subir el voucher (foto o PDF) directo al almacenamiento. */
+  async pedirSubidaVoucher(
+    filaId: string,
+    dto: {
+      nombreArchivo: string;
+      tipoContenido: keyof typeof TIPOS_VOUCHER;
+      bytes: number;
+    },
+    usuarioId: string,
+  ) {
+    const fila = await this.obtener(filaId);
+    if (dto.bytes > MAX_BYTES_VOUCHER)
+      throw new BadRequestException('El archivo supera 10 MB');
+    const ya = await this.vouchers.countBy({
+      filaId: fila.id,
+      confirmado: true,
+    });
+    if (ya >= MAX_VOUCHERS)
+      throw new ConflictException(
+        `Ya hay ${MAX_VOUCHERS} vouchers en esta semana; quita alguno`,
+      );
+    const id = randomUUID();
+    const clave = `tareo/${fila.semana}/${fila.id}/${id}.${TIPOS_VOUCHER[dto.tipoContenido]}`;
+    const url = await this.storage.urlParaSubir(clave, dto.tipoContenido);
+    await this.vouchers.insert({
+      id,
+      filaId: fila.id,
+      clave,
+      nombreArchivo: dto.nombreArchivo,
+      tipoContenido: dto.tipoContenido,
+      subidoPorId: usuarioId,
+    });
+    return {
+      archivoId: id,
+      subida: {
+        url,
+        metodo: 'PUT',
+        headers: { 'Content-Type': dto.tipoContenido },
+      },
+    };
+  }
+
+  async confirmarVoucher(filaId: string, archivoId: string) {
+    const v = await this.vouchers.findOneBy({ id: archivoId, filaId });
+    if (!v) throw new NotFoundException('El voucher no existe');
+    if (!v.confirmado) {
+      const guardado = await this.storage.consultar(v.clave);
+      if (!guardado)
+        throw new ConflictException(
+          'El voucher todavía no llegó; vuelve a subirlo',
+        );
+      if (guardado.bytes > MAX_BYTES_VOUCHER)
+        throw new ConflictException('El archivo supera 10 MB');
+      await this.vouchers.update(v.id, {
+        confirmado: true,
+        bytes: guardado.bytes,
+      });
+    }
+    return this.semana((await this.obtener(filaId)).semana);
+  }
+
+  async quitarVoucher(filaId: string, archivoId: string) {
+    const v = await this.vouchers.findOneBy({ id: archivoId, filaId });
+    if (!v) throw new NotFoundException('El voucher no existe');
+    await this.vouchers.delete(v.id);
+    try {
+      await this.storage.borrar(v.clave);
+    } catch {
+      // Si el archivo no se pudo borrar, igual deja de mostrarse.
+    }
+    return this.semana((await this.obtener(filaId)).semana);
   }
 
   private async obtener(id: string) {

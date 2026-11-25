@@ -10,6 +10,8 @@ import {
   Res,
 } from '@nestjs/common';
 import type { Response } from 'express';
+import { CurrentUser } from '../../core/decorators/current-user.decorator.js';
+import type { UsuarioAutenticado } from '../../core/auth/types/usuario-autenticado.js';
 import { Roles } from '../../core/decorators/roles.decorator.js';
 import { Rol } from '../../shared/enums/rol.enum.js';
 import { idSchema } from '../../shared/validation/id.schema.js';
@@ -34,6 +36,8 @@ import {
   resumenMesSchema,
   type SeguimientoDto,
   seguimientoSchema,
+  type SubirVoucherDto,
+  subirVoucherSchema,
 } from './dto/rrhh.schema.js';
 import { PersonalService } from './personal.service.js';
 import { TareoExcelService } from './tareo-excel.service.js';
@@ -145,6 +149,31 @@ export class RrhhController {
     @Body({ schema: crearMovimientoSchema }) dto: CrearMovimientoDto,
   ) {
     return this.tareo.agregarMovimiento(id, dto);
+  }
+
+  @Post('tareo/filas/:id/voucher')
+  pedirSubidaVoucher(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: subirVoucherSchema }) dto: SubirVoucherDto,
+    @CurrentUser() usuario: UsuarioAutenticado,
+  ) {
+    return this.tareo.pedirSubidaVoucher(id, dto, usuario.id);
+  }
+
+  @Post('tareo/filas/:id/voucher/:archivoId/confirmar')
+  confirmarVoucher(
+    @Param('id', { schema: idSchema }) id: string,
+    @Param('archivoId', { schema: idSchema }) archivoId: string,
+  ) {
+    return this.tareo.confirmarVoucher(id, archivoId);
+  }
+
+  @Delete('tareo/filas/:id/voucher/:archivoId')
+  quitarVoucher(
+    @Param('id', { schema: idSchema }) id: string,
+    @Param('archivoId', { schema: idSchema }) archivoId: string,
+  ) {
+    return this.tareo.quitarVoucher(id, archivoId);
   }
 
   @Delete('tareo/movimientos/:id')

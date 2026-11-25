@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MedioPago } from '../entities/tareo-fila.entity.js';
+import { TIPOS_VOUCHER } from '../tareo.service.js';
 import {
   ConceptoMovimiento,
   TipoMovimiento,
@@ -173,3 +174,20 @@ export const seguimientoSchema = z
     { message: 'Máximo un año', path: ['hasta'] },
   );
 export type SeguimientoDto = z.infer<typeof seguimientoSchema>;
+
+/** Subir el voucher del pago de una semana (foto o PDF). */
+export const subirVoucherSchema = z.object({
+  nombreArchivo: z.string().trim().min(1).max(200),
+  tipoContenido: z.enum(
+    Object.keys(TIPOS_VOUCHER) as [
+      keyof typeof TIPOS_VOUCHER,
+      ...(keyof typeof TIPOS_VOUCHER)[],
+    ],
+    'Solo fotos (JPG, PNG, WEBP, HEIC) o PDF',
+  ),
+  bytes: z
+    .int()
+    .positive()
+    .max(10 * 1024 * 1024, 'El archivo supera 10 MB'),
+});
+export type SubirVoucherDto = z.infer<typeof subirVoucherSchema>;
