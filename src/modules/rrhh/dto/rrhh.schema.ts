@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { MedioPago } from '../entities/tareo-fila.entity.js';
+import { TIPOS_VOUCHER } from '../tareo.service.js';
 import {
   ConceptoMovimiento,
   TipoMovimiento,
@@ -173,3 +174,85 @@ export const seguimientoSchema = z
     { message: 'Máximo un año', path: ['hasta'] },
   );
 export type SeguimientoDto = z.infer<typeof seguimientoSchema>;
+
+/** Subir el voucher del pago de una semana (foto o PDF). */
+export const subirVoucherSchema = z.object({
+  nombreArchivo: z.string().trim().min(1).max(200),
+  tipoContenido: z.enum(
+    Object.keys(TIPOS_VOUCHER) as [
+      keyof typeof TIPOS_VOUCHER,
+      ...(keyof typeof TIPOS_VOUCHER)[],
+    ],
+    'Solo fotos (JPG, PNG, WEBP, HEIC) o PDF',
+  ),
+  bytes: z
+    .int()
+    .positive()
+    .max(10 * 1024 * 1024, 'El archivo supera 10 MB'),
+});
+export type SubirVoucherDto = z.infer<typeof subirVoucherSchema>;
+
+// ---------- Préstamos ----------
+
+const montoPositivo = monto.refine((n) => n > 0, 'Debe ser mayor que 0');
+
+export const crearPrestamoSchema = z.object({
+  trabajadorId: z.uuid('Elige al trabajador'),
+  fecha: z.iso.date('La fecha no es válida'),
+  monto: montoPositivo,
+  cuota: montoPositivo,
+  nota: textoOpcional(200),
+});
+export type CrearPrestamoDto = z.infer<typeof crearPrestamoSchema>;
+
+export const actualizarPrestamoSchema = z
+  .object({
+    fecha: z.iso.date('La fecha no es válida'),
+    monto: montoPositivo,
+    cuota: montoPositivo,
+    nota: textoOpcional(200),
+  })
+  .partial();
+export type ActualizarPrestamoDto = z.infer<typeof actualizarPrestamoSchema>;
+
+export const filtrosPrestamosSchema = z.object({
+  trabajadorId: z.uuid().optional(),
+  estado: z.enum(['ACTIVO', 'CANCELADO']).optional(),
+});
+export type FiltrosPrestamosDto = z.infer<typeof filtrosPrestamosSchema>;
+
+/** Cuota de un préstamo en una semana; 0 la quita. */
+export const cuotaSemanaSchema = z.object({ monto });
+export type CuotaSemanaDto = z.infer<typeof cuotaSemanaSchema>;
+
+// ---------- Sueldos fijos ----------
+
+export const consultarMesSchema = z.object({
+  mes: z
+    .string()
+    .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'El mes no es válido (AAAA-MM)'),
+});
+export type ConsultarMesDto = z.infer<typeof consultarMesSchema>;
+
+export const editarPagoFijoSchema = z
+  .object({
+    sueldo: monto,
+    retenido: z.boolean(),
+    comentario: textoOpcional(500),
+  })
+  .partial();
+export type EditarPagoFijoDto = z.infer<typeof editarPagoFijoSchema>;
+
+export const movimientoFijoSchema = crearMovimientoSchema.extend({
+  fecha: z.iso.date('La fecha no es válida').nullable().optional(),
+});
+export type MovimientoFijoDto = z.infer<typeof movimientoFijoSchema>;
+
+export const agregarPagoFijoSchema = z.object({
+  mes: consultarMesSchema.shape.mes,
+  trabajadorId: z.uuid('Elige al trabajador'),
+  sueldo: monto.refine((n) => n > 0, 'Indica el sueldo'),
+  periodicidad: z.enum(PeriodicidadSueldo),
+  actualizarFicha: z.boolean().default(true),
+});
+export type AgregarPagoFijoDto = z.infer<typeof agregarPagoFijoSchema>;

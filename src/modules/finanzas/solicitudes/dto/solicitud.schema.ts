@@ -50,19 +50,33 @@ const datosSolicitud = z.object({
   tipo: z.enum(TipoSolicitud),
   sitioId: z.uuid('El sitio no es válido').nullable().optional(),
   centroCosto: textoOpcional(60),
+  /** Trabajo del seguimiento (y su OC) al que se carga, si se sabe. */
+  trabajoId: z.uuid('El trabajo no es válido').nullable().optional(),
   fecha: z.iso.date('La fecha no es válida'),
 });
 
-/** Centro de costo: un sitio o un centro de costo escrito, uno de los dos. */
+/**
+ * Centro de costo: un sitio o un centro de costo escrito, uno de los dos. Si se elige un
+ * trabajo, basta con él (el sitio se toma del trabajo).
+ */
 const conCentroDeCosto = <
-  T extends z.ZodType<{ sitioId?: string | null; centroCosto?: string | null }>,
+  T extends z.ZodType<{
+    sitioId?: string | null;
+    centroCosto?: string | null;
+    trabajoId?: string | null;
+  }>,
 >(
   s: T,
 ) =>
-  s.refine((d) => !!d.sitioId !== !!d.centroCosto, {
-    message: 'Elige el ID site o el centro de costo',
-    path: ['sitioId'],
-  });
+  s.refine(
+    (d) =>
+      !!d.sitioId !== !!d.centroCosto ||
+      (!!d.trabajoId && !d.sitioId && !d.centroCosto),
+    {
+      message: 'Elige el ID site o el centro de costo',
+      path: ['sitioId'],
+    },
+  );
 
 export const crearSolicitudSchema = conCentroDeCosto(datosSolicitud);
 export type CrearSolicitudDto = z.infer<typeof crearSolicitudSchema>;
@@ -72,7 +86,9 @@ export type EditarSolicitudDto = z.infer<typeof editarSolicitudSchema>;
 
 export const filtrosSolicitudSchema = z.object({
   /** MIAS: las que pedí. POR_APROBAR / POR_ABONAR: bandejas. TODAS: todo (si tengo permiso). */
-  vista: z.enum(['MIAS', 'POR_APROBAR', 'POR_ABONAR', 'TODAS']).optional(),
+  vista: z
+    .enum(['MIAS', 'POR_APROBAR', 'POR_ABONAR', 'POR_RENDIR', 'TODAS'])
+    .optional(),
   estado: z.enum(EstadoSolicitud).optional(),
   q: z.string().trim().min(1).max(60).optional(),
   mes: z
@@ -115,6 +131,12 @@ export const subirArchivoSchema = z.object({
   monto: monto.nullable().optional(),
 });
 export type SubirArchivoDto = z.infer<typeof subirArchivoSchema>;
+
+export const trabajosParaElegirSchema = z.object({
+  q: z.string().trim().min(1).max(60).optional(),
+  sitioId: z.uuid().optional(),
+});
+export type TrabajosParaElegirDto = z.infer<typeof trabajosParaElegirSchema>;
 
 export const beneficiariosSchema = z.object({
   q: z.string().trim().min(2).max(60),

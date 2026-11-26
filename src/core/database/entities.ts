@@ -13,7 +13,18 @@ import { FotoVisita } from '../../modules/execution/visitas/entities/foto-visita
 import { ComentarioVisita } from '../../modules/execution/visitas/entities/comentario-visita.entity.js';
 import { Trabajador } from '../../modules/rrhh/entities/trabajador.entity.js';
 import { TareoFila } from '../../modules/rrhh/entities/tareo-fila.entity.js';
+import { Comprobante } from '../../modules/finanzas/contabilidad/entities/comprobante.entity.js';
+import { PagoComprobante } from '../../modules/finanzas/contabilidad/entities/pago-comprobante.entity.js';
+import { EventoTrabajo } from '../../modules/planning/trabajos/entities/evento-trabajo.entity.js';
+import { RevisionPresupuesto } from '../../modules/planning/trabajos/entities/revision-presupuesto.entity.js';
+import { Trabajo } from '../../modules/planning/trabajos/entities/trabajo.entity.js';
+import { VoucherPagoFijo } from '../../modules/rrhh/entities/voucher-pago-fijo.entity.js';
+import { ArchivoComprobante } from '../../modules/finanzas/contabilidad/entities/archivo-comprobante.entity.js';
+import { PagoFijoMovimiento } from '../../modules/rrhh/entities/pago-fijo-movimiento.entity.js';
+import { PagoFijo } from '../../modules/rrhh/entities/pago-fijo.entity.js';
+import { Prestamo } from '../../modules/rrhh/entities/prestamo.entity.js';
 import { TareoMovimiento } from '../../modules/rrhh/entities/tareo-movimiento.entity.js';
+import { VoucherTareo } from '../../modules/rrhh/entities/voucher-tareo.entity.js';
 import { SolicitudDinero } from '../../modules/finanzas/solicitudes/entities/solicitud-dinero.entity.js';
 import { ArchivoSolicitud } from '../../modules/finanzas/solicitudes/entities/archivo-solicitud.entity.js';
 
@@ -38,6 +49,17 @@ export const entities = [
   Trabajador,
   TareoFila,
   TareoMovimiento,
+  VoucherTareo,
+  Prestamo,
+  PagoFijo,
+  PagoFijoMovimiento,
+  Trabajo,
+  RevisionPresupuesto,
+  EventoTrabajo,
+  Comprobante,
+  PagoComprobante,
+  VoucherPagoFijo,
+  ArchivoComprobante,
   SolicitudDinero,
   ArchivoSolicitud,
 ];

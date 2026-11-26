@@ -4,6 +4,7 @@ import { NotificacionesModule } from '../../core/notificaciones/notificaciones.m
 import { Usuario } from '../../core/usuarios/entities/usuario.entity.js';
 import { Sitio } from '../../master/sitios/entities/sitio.entity.js';
 import { Trabajador } from '../../rrhh/entities/trabajador.entity.js';
+import { Trabajo } from '../../planning/trabajos/entities/trabajo.entity.js';
 import { ArchivoSolicitud } from './entities/archivo-solicitud.entity.js';
 import { SolicitudDinero } from './entities/solicitud-dinero.entity.js';
 import { SolicitudesController } from './solicitudes.controller.js';
@@ -18,6 +19,7 @@ import { SolicitudesService } from './solicitudes.service.js';
       Usuario,
       Sitio,
       Trabajador,
+      Trabajo,
     ]),
     NotificacionesModule,
   ],

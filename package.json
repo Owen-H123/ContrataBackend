@@ -26,7 +26,8 @@
     "migration:run:prod": "typeorm migration:run -d dist/core/database/data-source.js",
     "migration:revert": "nest build && typeorm migration:revert -d dist/core/database/data-source.js",
     "seed": "nest build && node dist/core/database/seeds/seed.js",
-    "importar:tareo": "nest build && node dist/core/database/seeds/importar-tareo.js"
+    "importar:tareo": "nest build && node dist/core/database/seeds/importar-tareo.js",
+    "importar:seguimiento": "nest build && node dist/core/database/seeds/importar-seguimiento.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "3.1161.0",
