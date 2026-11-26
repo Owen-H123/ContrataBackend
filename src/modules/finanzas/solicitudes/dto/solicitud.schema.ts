@@ -86,7 +86,9 @@ export type EditarSolicitudDto = z.infer<typeof editarSolicitudSchema>;
 
 export const filtrosSolicitudSchema = z.object({
   /** MIAS: las que pedí. POR_APROBAR / POR_ABONAR: bandejas. TODAS: todo (si tengo permiso). */
-  vista: z.enum(['MIAS', 'POR_APROBAR', 'POR_ABONAR', 'TODAS']).optional(),
+  vista: z
+    .enum(['MIAS', 'POR_APROBAR', 'POR_ABONAR', 'POR_RENDIR', 'TODAS'])
+    .optional(),
   estado: z.enum(EstadoSolicitud).optional(),
   q: z.string().trim().min(1).max(60).optional(),
   mes: z

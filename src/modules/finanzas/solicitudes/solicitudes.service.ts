@@ -107,12 +107,22 @@ export class SolicitudesService {
     return p.has(Permiso.APROBAR_DINERO) || p.has(Permiso.ABONAR_DINERO);
   }
 
+  /**
+   * A quién avisar: quienes tienen el permiso y, siempre, los administradores (en RYSCOM el
+   * administrador es quien aprueba y paga, y puede hacerlo aunque no tenga el permiso marcado).
+   */
   private async idsConPermiso(permiso: Permiso): Promise<string[]> {
     const filas = await this.usuarios
       .createQueryBuilder('u')
       .select('u.id', 'id')
       .where('u.activo = true')
-      .andWhere(':permiso = ANY(u.permisos)', { permiso })
+      .andWhere(
+        new Brackets((w) =>
+          w
+            .where(':permiso = ANY(u.permisos)', { permiso })
+            .orWhere('u.rol = :admin', { admin: Rol.ADMIN }),
+        ),
+      )
       .getRawMany<{ id: string }>();
     return filas.map((f) => f.id);
   }
@@ -126,6 +136,8 @@ export class SolicitudesService {
     if (vista === 'MIAS' || !todas) base.solicitanteId = usuario.id;
     if (vista === 'POR_APROBAR') base.estado = EstadoSolicitud.PENDIENTE;
     if (vista === 'POR_ABONAR') base.estado = EstadoSolicitud.APROBADA;
+    // Adelantos ya abonados que aún no se rinden con sus boletas.
+    if (vista === 'POR_RENDIR') base.estado = EstadoSolicitud.ABONADA;
     if (filtros.estado) base.estado = filtros.estado;
     if (filtros.mes) {
       const [a, m] = filtros.mes.split('-').map(Number);
@@ -154,23 +166,35 @@ export class SolicitudesService {
   /** Cuántas hay en cada bandeja (para los números de las pestañas y el aviso en Inicio). */
   async conteos(usuario: UsuarioAutenticado) {
     const p = await this.permisosDe(usuario);
-    const [porAprobar, porAbonar, misPendientes] = await Promise.all([
-      p.has(Permiso.APROBAR_DINERO)
-        ? this.solicitudes.countBy({ estado: EstadoSolicitud.PENDIENTE })
-        : 0,
-      p.has(Permiso.ABONAR_DINERO)
-        ? this.solicitudes.countBy({ estado: EstadoSolicitud.APROBADA })
-        : 0,
-      this.solicitudes.countBy({
-        solicitanteId: usuario.id,
-        estado: In([
-          EstadoSolicitud.PENDIENTE,
-          EstadoSolicitud.APROBADA,
-          EstadoSolicitud.ABONADA,
-        ]),
-      }),
-    ]);
-    return { porAprobar, porAbonar, misPendientes, permisos: [...p] };
+    const todas = p.has(Permiso.APROBAR_DINERO) || p.has(Permiso.ABONAR_DINERO);
+    const [porAprobar, porAbonar, porRendir, misPendientes] = await Promise.all(
+      [
+        p.has(Permiso.APROBAR_DINERO)
+          ? this.solicitudes.countBy({ estado: EstadoSolicitud.PENDIENTE })
+          : 0,
+        p.has(Permiso.ABONAR_DINERO)
+          ? this.solicitudes.countBy({ estado: EstadoSolicitud.APROBADA })
+          : 0,
+        todas
+          ? this.solicitudes.countBy({ estado: EstadoSolicitud.ABONADA })
+          : 0,
+        this.solicitudes.countBy({
+          solicitanteId: usuario.id,
+          estado: In([
+            EstadoSolicitud.PENDIENTE,
+            EstadoSolicitud.APROBADA,
+            EstadoSolicitud.ABONADA,
+          ]),
+        }),
+      ],
+    );
+    return {
+      porAprobar,
+      porAbonar,
+      porRendir,
+      misPendientes,
+      permisos: [...p],
+    };
   }
 
   async obtener(id: string, usuario: UsuarioAutenticado) {
