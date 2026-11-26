@@ -9,6 +9,7 @@ import {
 import { EntidadBase } from '../../../shared/entities/base.entity.js';
 import { numerico } from '../../../shared/entities/numerico.transformer.js';
 import { PagoFijo } from './pago-fijo.entity.js';
+import { Prestamo } from './prestamo.entity.js';
 import {
   ConceptoMovimiento,
   TipoMovimiento,
@@ -48,4 +49,13 @@ export class PagoFijoMovimiento extends EntidadBase {
 
   @Column({ type: 'varchar', length: 200, nullable: true })
   nota: string | null;
+
+  /** Si es la cuota de un préstamo, cuál (igual que en el tareo). */
+  @Index()
+  @Column({ name: 'prestamo_id', type: 'uuid', nullable: true })
+  prestamoId: string | null;
+
+  @ManyToOne(() => Prestamo, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'prestamo_id' })
+  prestamo?: Relation<Prestamo>;
 }

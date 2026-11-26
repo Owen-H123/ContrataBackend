@@ -12,6 +12,7 @@ import { EntidadBase } from '../../../../shared/entities/base.entity.js';
 import { numerico } from '../../../../shared/entities/numerico.transformer.js';
 import { Usuario } from '../../../core/usuarios/entities/usuario.entity.js';
 import { Sitio } from '../../../master/sitios/entities/sitio.entity.js';
+import { Trabajo } from '../../../planning/trabajos/entities/trabajo.entity.js';
 import { ArchivoSolicitud } from './archivo-solicitud.entity.js';
 
 /** Adelanto: se pide antes de gastar y luego se rinde. Reembolso: ya se gastó, con boletas. */
@@ -106,6 +107,15 @@ export class SolicitudDinero extends EntidadBase {
   /** …o un centro de costo que no es sitio (Oficina, Almacén…). */
   @Column({ name: 'centro_costo', type: 'varchar', length: 60, nullable: true })
   centroCosto: string | null;
+
+  /** Trabajo del seguimiento (con su OC) al que se carga el gasto, si se sabe. */
+  @Index()
+  @Column({ name: 'trabajo_id', type: 'uuid', nullable: true })
+  trabajoId: string | null;
+
+  @ManyToOne(() => Trabajo, { onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'trabajo_id' })
+  trabajo?: Relation<Trabajo> | null;
 
   /** Fecha de la solicitud. */
   @Index()

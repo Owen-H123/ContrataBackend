@@ -18,6 +18,8 @@ import { PagoComprobante } from '../../modules/finanzas/contabilidad/entities/pa
 import { EventoTrabajo } from '../../modules/planning/trabajos/entities/evento-trabajo.entity.js';
 import { RevisionPresupuesto } from '../../modules/planning/trabajos/entities/revision-presupuesto.entity.js';
 import { Trabajo } from '../../modules/planning/trabajos/entities/trabajo.entity.js';
+import { VoucherPagoFijo } from '../../modules/rrhh/entities/voucher-pago-fijo.entity.js';
+import { ArchivoComprobante } from '../../modules/finanzas/contabilidad/entities/archivo-comprobante.entity.js';
 import { PagoFijoMovimiento } from '../../modules/rrhh/entities/pago-fijo-movimiento.entity.js';
 import { PagoFijo } from '../../modules/rrhh/entities/pago-fijo.entity.js';
 import { Prestamo } from '../../modules/rrhh/entities/prestamo.entity.js';
@@ -56,6 +58,8 @@ export const entities = [
   EventoTrabajo,
   Comprobante,
   PagoComprobante,
+  VoucherPagoFijo,
+  ArchivoComprobante,
   SolicitudDinero,
   ArchivoSolicitud,
 ];
