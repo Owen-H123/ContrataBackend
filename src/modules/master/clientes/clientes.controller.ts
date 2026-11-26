@@ -25,13 +25,14 @@ export class ClientesController {
     return this.clientes.obtener(id);
   }
 
-  @Roles(Rol.ADMIN)
+  // El supervisor también registra clientes (pedido de RYSCOM).
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR)
   @Post()
   crear(@Body({ schema: crearClienteSchema }) dto: CrearClienteDto) {
     return this.clientes.crear(dto);
   }
 
-  @Roles(Rol.ADMIN)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR)
   @Patch(':id')
   actualizar(
     @Param('id', { schema: idSchema }) id: string,

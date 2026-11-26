@@ -57,7 +57,8 @@ export class InformesController {
     return this.informes.obtener(id, usuario);
   }
 
-  @Roles(Rol.ADMIN)
+  // El supervisor también crea informes y asigna técnicos (pedido de RYSCOM).
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR)
   @Post()
   crear(
     @Body({ schema: crearInformeSchema }) dto: CrearInformeDto,
@@ -66,7 +67,7 @@ export class InformesController {
     return this.informes.crear(dto, usuario);
   }
 
-  @Roles(Rol.ADMIN)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR)
   @Put(':id/tecnicos')
   asignarTecnicos(
     @Param('id', { schema: idSchema }) id: string,
@@ -121,7 +122,7 @@ export class InformesController {
   }
 
   /** Agrega un ítem en el sitio del informe; los técnicos lo ven al instante. */
-  @Roles(Rol.ADMIN)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR)
   @Post(':id/actividades')
   agregarActividad(
     @Param('id', { schema: idSchema }) id: string,

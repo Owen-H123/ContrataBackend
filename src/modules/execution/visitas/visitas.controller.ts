@@ -63,7 +63,7 @@ export class VisitasController {
   }
 
   /** Sitios existentes y clientes, para el formulario de nueva visita. */
-  @Roles(Rol.ADMIN, Rol.TECNICO)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR, Rol.TECNICO)
   @Get('opciones')
   opciones() {
     return this.visitas.opciones();
@@ -77,7 +77,7 @@ export class VisitasController {
     return this.visitas.obtener(id, usuario);
   }
 
-  @Roles(Rol.ADMIN, Rol.TECNICO)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR, Rol.TECNICO)
   @Post()
   crear(
     @Body({ schema: crearVisitaSchema }) dto: CrearVisitaDto,
@@ -86,7 +86,7 @@ export class VisitasController {
     return this.visitas.crear(dto, usuario);
   }
 
-  @Roles(Rol.ADMIN, Rol.TECNICO)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR, Rol.TECNICO)
   @Patch(':id')
   editar(
     @Param('id', { schema: idSchema }) id: string,
@@ -96,8 +96,8 @@ export class VisitasController {
     return this.visitas.editar(id, dto, usuario);
   }
 
-  /** Cambia el técnico a cargo de la visita. */
-  @Roles(Rol.ADMIN)
+  /** Cambia el técnico a cargo de la visita (el supervisor también, pedido de RYSCOM). */
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR)
   @Put(':id/tecnico')
   asignarTecnico(
     @Param('id', { schema: idSchema }) id: string,
@@ -108,7 +108,7 @@ export class VisitasController {
   }
 
   /** Pendiente de visitar, visitado o acceso rechazado. */
-  @Roles(Rol.ADMIN, Rol.TECNICO)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR, Rol.TECNICO)
   @Patch(':id/estado')
   cambiarEstado(
     @Param('id', { schema: idSchema }) id: string,
@@ -118,7 +118,7 @@ export class VisitasController {
     return this.visitas.cambiarEstado(id, dto, usuario);
   }
 
-  @Roles(Rol.ADMIN, Rol.TECNICO)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR, Rol.TECNICO)
   @Patch(':id/ubicacion')
   registrarUbicacion(
     @Param('id', { schema: idSchema }) id: string,
@@ -128,7 +128,7 @@ export class VisitasController {
     return this.visitas.registrarUbicacion(id, dto, usuario);
   }
 
-  @Roles(Rol.ADMIN, Rol.TECNICO)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR, Rol.TECNICO)
   @Post(':id/hallazgos')
   crearHallazgo(
     @Param('id', { schema: idSchema }) id: string,
@@ -138,7 +138,7 @@ export class VisitasController {
     return this.visitas.crearHallazgo(id, dto, usuario);
   }
 
-  @Roles(Rol.ADMIN, Rol.TECNICO)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR, Rol.TECNICO)
   @Patch(':id/hallazgos/:hallazgoId')
   editarHallazgo(
     @Param('id', { schema: idSchema }) id: string,
@@ -149,7 +149,7 @@ export class VisitasController {
     return this.visitas.editarHallazgo(id, hallazgoId, dto, usuario);
   }
 
-  @Roles(Rol.ADMIN, Rol.TECNICO)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR, Rol.TECNICO)
   @Delete(':id/hallazgos/:hallazgoId')
   eliminarHallazgo(
     @Param('id', { schema: idSchema }) id: string,
@@ -159,7 +159,7 @@ export class VisitasController {
     return this.visitas.eliminarHallazgo(id, hallazgoId, usuario);
   }
 
-  @Roles(Rol.ADMIN, Rol.TECNICO)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR, Rol.TECNICO)
   @Post(':id/fotos')
   solicitarSubida(
     @Param('id', { schema: idSchema }) id: string,
@@ -169,7 +169,7 @@ export class VisitasController {
     return this.visitas.solicitarSubida(id, dto, usuario);
   }
 
-  @Roles(Rol.ADMIN, Rol.TECNICO)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR, Rol.TECNICO)
   @Post(':id/fotos/:fotoId/confirmar')
   @HttpCode(HttpStatus.OK)
   confirmarFoto(
@@ -180,7 +180,7 @@ export class VisitasController {
     return this.visitas.confirmarFoto(id, fotoId, usuario);
   }
 
-  @Roles(Rol.ADMIN, Rol.TECNICO)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR, Rol.TECNICO)
   @Patch(':id/fotos/:fotoId')
   editarFoto(
     @Param('id', { schema: idSchema }) id: string,
@@ -191,7 +191,7 @@ export class VisitasController {
     return this.visitas.editarFoto(id, fotoId, dto, usuario);
   }
 
-  @Roles(Rol.ADMIN, Rol.TECNICO)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR, Rol.TECNICO)
   @Delete(':id/fotos/:fotoId')
   @HttpCode(HttpStatus.NO_CONTENT)
   quitarFoto(
@@ -202,7 +202,7 @@ export class VisitasController {
     return this.visitas.quitarFoto(id, fotoId, usuario);
   }
 
-  @Roles(Rol.ADMIN, Rol.TECNICO)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR, Rol.TECNICO)
   @Post(':id/comentarios')
   comentar(
     @Param('id', { schema: idSchema }) id: string,

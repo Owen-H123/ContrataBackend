@@ -26,8 +26,8 @@ import {
 import { OrdenesCompraService } from './ordenes-compra.service.js';
 
 /**
- * Consultar: ADMIN y SUPERVISOR (las órdenes muestran precios).
- * Crear y editar: solo ADMIN. Los técnicos verán sus actividades desde los informes.
+ * Consultar, crear y editar (también sus ítems): ADMIN y SUPERVISOR (las órdenes muestran
+ * precios). Los técnicos verán sus actividades desde los informes.
  */
 @Roles(Rol.ADMIN, Rol.SUPERVISOR)
 @Controller('ordenes-compra')
@@ -44,13 +44,13 @@ export class OrdenesCompraController {
     return this.ordenes.obtener(id);
   }
 
-  @Roles(Rol.ADMIN)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR)
   @Post()
   crear(@Body({ schema: crearOrdenSchema }) dto: CrearOrdenDto) {
     return this.ordenes.crear(dto);
   }
 
-  @Roles(Rol.ADMIN)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR)
   @Patch(':id')
   actualizar(
     @Param('id', { schema: idSchema }) id: string,
@@ -59,7 +59,7 @@ export class OrdenesCompraController {
     return this.ordenes.actualizar(id, dto);
   }
 
-  @Roles(Rol.ADMIN)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR)
   @Post(':id/items')
   agregarItem(
     @Param('id', { schema: idSchema }) id: string,
@@ -68,7 +68,7 @@ export class OrdenesCompraController {
     return this.ordenes.agregarItem(id, dto);
   }
 
-  @Roles(Rol.ADMIN)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR)
   @Patch(':id/items/:itemId')
   actualizarItem(
     @Param('id', { schema: idSchema }) id: string,
@@ -78,7 +78,7 @@ export class OrdenesCompraController {
     return this.ordenes.actualizarItem(id, itemId, dto);
   }
 
-  @Roles(Rol.ADMIN)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR)
   @Delete(':id/items/:itemId')
   eliminarItem(
     @Param('id', { schema: idSchema }) id: string,
