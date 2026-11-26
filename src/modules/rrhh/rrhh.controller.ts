@@ -13,6 +13,10 @@ import type { Response } from 'express';
 import { CurrentUser } from '../../core/decorators/current-user.decorator.js';
 import type { UsuarioAutenticado } from '../../core/auth/types/usuario-autenticado.js';
 import { Roles } from '../../core/decorators/roles.decorator.js';
+import {
+  type SubirAdjuntoDto,
+  subirAdjuntoSchema,
+} from '../../shared/archivos/adjuntos.js';
 import { Rol } from '../../shared/enums/rol.enum.js';
 import { idSchema } from '../../shared/validation/id.schema.js';
 import {
@@ -126,8 +130,29 @@ export class RrhhController {
   }
 
   @Get('tareo/resumen')
-  resumen(@Query({ schema: resumenMesSchema }) q: ResumenMesDto) {
-    return this.tareo.resumenMes(q.mes);
+  async resumen(@Query({ schema: resumenMesSchema }) q: ResumenMesDto) {
+    // El resumen del mes trae también al personal fijo (sueldos del mes).
+    const [jornal, fijos] = await Promise.all([
+      this.tareo.resumenMes(q.mes),
+      this.fijos.mes(q.mes),
+    ]);
+    return {
+      ...jornal,
+      fijos: {
+        pagos: fijos.pagos.map((p) => ({
+          id: p.id,
+          parte: p.parte,
+          trabajador: p.trabajador,
+          sueldo: p.sueldo,
+          abonos: p.abonos,
+          descuentos: p.descuentos,
+          total: p.total,
+          pagadoEn: p.pagadoEn,
+          retenido: p.retenido,
+        })),
+        totales: fijos.totales,
+      },
+    };
   }
 
   @Post('tareo/filas')
@@ -287,6 +312,40 @@ export class RrhhController {
     @Body({ schema: movimientoFijoSchema }) dto: MovimientoFijoDto,
   ) {
     return this.fijos.agregarMovimiento(id, dto);
+  }
+
+  @Patch('sueldos-fijos/:id/prestamos/:prestamoId')
+  fijarCuotaFijo(
+    @Param('id', { schema: idSchema }) id: string,
+    @Param('prestamoId', { schema: idSchema }) prestamoId: string,
+    @Body({ schema: cuotaSemanaSchema }) dto: CuotaSemanaDto,
+  ) {
+    return this.fijos.fijarCuotaPrestamo(id, prestamoId, dto.monto);
+  }
+
+  @Post('sueldos-fijos/:id/voucher')
+  pedirVoucherFijo(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: subirAdjuntoSchema }) dto: SubirAdjuntoDto,
+    @CurrentUser() usuario: UsuarioAutenticado,
+  ) {
+    return this.fijos.pedirSubidaVoucher(id, dto, usuario.id);
+  }
+
+  @Post('sueldos-fijos/:id/voucher/:archivoId/confirmar')
+  confirmarVoucherFijo(
+    @Param('id', { schema: idSchema }) id: string,
+    @Param('archivoId', { schema: idSchema }) archivoId: string,
+  ) {
+    return this.fijos.confirmarVoucher(id, archivoId);
+  }
+
+  @Delete('sueldos-fijos/:id/voucher/:archivoId')
+  quitarVoucherFijo(
+    @Param('id', { schema: idSchema }) id: string,
+    @Param('archivoId', { schema: idSchema }) archivoId: string,
+  ) {
+    return this.fijos.quitarVoucher(id, archivoId);
   }
 
   @Delete('sueldos-fijos/movimientos/:id')

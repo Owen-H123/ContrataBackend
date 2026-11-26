@@ -13,7 +13,17 @@ import type {
   MovimientoFijoDto,
   PagarFilaDto,
 } from './dto/rrhh.schema.js';
+import { StorageService } from '../../services/storage/storage.service.js';
+import {
+  confirmarSubida,
+  conEnlaces,
+  pedirSubida,
+  quitarAdjunto,
+  type SubirAdjuntoDto,
+} from '../../shared/archivos/adjuntos.js';
 import { PagoFijoMovimiento } from './entities/pago-fijo-movimiento.entity.js';
+import { VoucherPagoFijo } from './entities/voucher-pago-fijo.entity.js';
+import { PrestamosService } from './prestamos.service.js';
 import { PagoFijo } from './entities/pago-fijo.entity.js';
 import { TipoMovimiento } from './entities/tareo-movimiento.entity.js';
 import {
@@ -91,6 +101,10 @@ export class SueldosFijosService {
     private readonly movimientos: Repository<PagoFijoMovimiento>,
     @InjectRepository(Trabajador)
     private readonly trabajadores: Repository<Trabajador>,
+    @InjectRepository(VoucherPagoFijo)
+    private readonly vouchers: Repository<VoucherPagoFijo>,
+    private readonly storage: StorageService,
+    private readonly prestamos: PrestamosService,
   ) {}
 
   /**
@@ -104,7 +118,45 @@ export class SueldosFijosService {
       relations: { trabajador: true, movimientos: true },
       order: { trabajador: { nombres: 'ASC' }, parte: 'ASC' },
     });
-    const lista = pagos.map(calcularPago);
+    const ids = pagos.map((p) => p.id);
+    const [vouchers, prestamos] = await Promise.all([
+      ids.length
+        ? this.vouchers.find({
+            where: { pagoId: In(ids), confirmado: true },
+            order: { creadoEn: 'ASC' },
+          })
+        : [],
+      this.prestamos.deTrabajadoresFijos(
+        [...new Set(pagos.map((p) => p.trabajadorId))],
+        ids,
+      ),
+    ]);
+    const enlaces = await conEnlaces(this.storage, vouchers);
+    const lista = pagos.map((p) => ({
+      ...calcularPago(p),
+      vouchers: enlaces.filter((_, i) => vouchers[i].pagoId === p.id),
+      // Préstamos que se le descuentan en este periodo (o que puede descontarse).
+      prestamos: prestamos
+        .filter((x) => x.trabajadorId === p.trabajadorId)
+        .map((x) => ({
+          x,
+          enEste: x.cuotasEnPagos.find((c) => c.pagoId === p.id),
+        }))
+        .filter(
+          ({ x, enEste }) =>
+            enEste || (x.estado === 'ACTIVO' && x.fecha.slice(0, 7) <= p.mes),
+        )
+        .map(({ x, enEste }) => ({
+          id: x.id,
+          fecha: x.fecha,
+          monto: x.monto,
+          cuota: x.cuota,
+          saldo: x.saldo,
+          porProgramar: x.porProgramar,
+          estaSemana: enEste?.monto ?? 0,
+          movimientoId: enEste?.movimientoId ?? null,
+        })),
+    }));
     const suma = (filtro: (p: (typeof lista)[number]) => boolean) =>
       redondear2(lista.filter(filtro).reduce((s, p) => s + p.total, 0));
     return {
@@ -149,13 +201,22 @@ export class SueldosFijosService {
           }),
         ),
     );
-    if (nuevos.length)
-      await this.pagos
-        .createQueryBuilder()
-        .insert()
-        .values(nuevos)
-        .orIgnore()
-        .execute();
+    if (!nuevos.length) return;
+    const r = await this.pagos
+      .createQueryBuilder()
+      .insert()
+      .values(nuevos)
+      .orIgnore()
+      .execute();
+    // Los préstamos activos se descuentan solos en los pagos recién creados.
+    const creados = (r.identifiers as ({ id?: string } | undefined)[])
+      .map((i) => i?.id)
+      .filter((id): id is string => !!id);
+    if (creados.length)
+      await this.prestamos.aplicarCuotasFijos(
+        this.pagos.manager,
+        await this.pagos.findBy({ id: In(creados) }),
+      );
   }
 
   /**
@@ -180,7 +241,7 @@ export class SueldosFijosService {
     const partes =
       dto.periodicidad === PeriodicidadSueldo.MENSUAL ? [0] : [1, 2];
     await this.pagos.manager.transaction(async (em) => {
-      await em.save(
+      const creados = await em.save(
         partes.map((parte) =>
           em.create(PagoFijo, {
             trabajadorId: t.id,
@@ -190,6 +251,7 @@ export class SueldosFijosService {
           }),
         ),
       );
+      await this.prestamos.aplicarCuotasFijos(em, creados);
       if (dto.actualizarFicha)
         await em.update(Trabajador, t.id, {
           tipo: TipoTrabajador.FIJO,
@@ -198,6 +260,48 @@ export class SueldosFijosService {
         });
     });
     return this.mes(dto.mes);
+  }
+
+  /** Cambia la cuota de un préstamo en este periodo; 0 la quita. */
+  async fijarCuotaPrestamo(id: string, prestamoId: string, monto: number) {
+    const p = await this.obtener(id);
+    await this.pagos.manager.transaction((em) =>
+      this.prestamos.fijarCuotaFijo(em, p, prestamoId, monto),
+    );
+    return this.mes(p.mes);
+  }
+
+  // ---------- Voucher del pago ----------
+
+  async pedirSubidaVoucher(
+    id: string,
+    dto: SubirAdjuntoDto,
+    usuarioId: string,
+  ) {
+    const p = await this.obtener(id);
+    return pedirSubida(this.storage, this.vouchers, {
+      padre: { pagoId: p.id },
+      carpeta: `sueldos/${p.mes}/${p.id}`,
+      max: 3,
+      dto,
+      usuarioId,
+    });
+  }
+
+  async confirmarVoucher(id: string, archivoId: string) {
+    await confirmarSubida(this.storage, this.vouchers, {
+      id: archivoId,
+      pagoId: id,
+    });
+    return this.mes((await this.obtener(id)).mes);
+  }
+
+  async quitarVoucher(id: string, archivoId: string) {
+    await quitarAdjunto(this.storage, this.vouchers, {
+      id: archivoId,
+      pagoId: id,
+    });
+    return this.mes((await this.obtener(id)).mes);
   }
 
   async editar(id: string, dto: EditarPagoFijoDto) {

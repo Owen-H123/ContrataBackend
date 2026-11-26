@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import { NOMBRE_CONCEPTO_EXCEL } from './nombres.js';
+import { SueldosFijosService } from './sueldos-fijos.service.js';
 import { domingoDe, sumarDias, TareoService } from './tareo.service.js';
 
 const MESES = [
@@ -39,7 +40,10 @@ function tituloSemana(domingo: string) {
  */
 @Injectable()
 export class TareoExcelService {
-  constructor(private readonly tareo: TareoService) {}
+  constructor(
+    private readonly tareo: TareoService,
+    private readonly fijos: SueldosFijosService,
+  ) {}
 
   async exportarMes(mes: string): Promise<Buffer> {
     const [anio, m] = mes.split('-').map(Number);
@@ -260,6 +264,89 @@ export class TareoExcelService {
       };
     }
 
+    await this.hojaFijos(libro, mes);
     return Buffer.from(await libro.xlsx.writeBuffer());
+  }
+
+  /** Hoja aparte con los sueldos del personal fijo del mes (quincenas o mes completo). */
+  private async hojaFijos(libro: ExcelJS.Workbook, mes: string) {
+    const { pagos } = await this.fijos.mes(mes);
+    if (!pagos.length) return;
+    const [a, m] = mes.split('-').map(Number);
+    const hoja = libro.addWorksheet('SUELDOS FIJOS');
+    const titulo = hoja.addRow([
+      `SUELDOS DEL PERSONAL FIJO — ${MESES[m - 1]} ${a}`,
+    ]);
+    hoja.mergeCells(titulo.number, 1, titulo.number, 10);
+    titulo.font = { bold: true, size: 13 };
+    const cab = hoja.addRow([
+      'Nº',
+      'APELLIDOS Y NOMBRES',
+      'DNI',
+      'CARGO',
+      'PERIODO',
+      'SUELDO',
+      'ABONOS',
+      'DESCUENTOS / ADELANTOS',
+      'TOTAL A PAGAR',
+      'PAGADO EL',
+    ]);
+    cab.eachCell((c) => {
+      c.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      c.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: NARANJA },
+      };
+      c.alignment = { vertical: 'middle', wrapText: true };
+    });
+    const nombreParte = ['Mes completo', '1.ª quincena', '2.ª quincena'];
+    const primera = cab.number + 1;
+    pagos.forEach((p, i) => {
+      const fila = hoja.addRow([
+        i + 1,
+        p.trabajador?.nombres ?? '',
+        p.trabajador?.dni ?? '',
+        p.trabajador?.cargo ?? '',
+        nombreParte[p.parte],
+        p.sueldo,
+        p.abonos,
+        p.descuentos,
+        {
+          formula: `F${hoja.rowCount + 1}+G${hoja.rowCount + 1}-H${hoja.rowCount + 1}`,
+        },
+        p.pagadoEn
+          ? new Date(`${p.pagadoEn}T12:00:00`)
+          : p.retenido
+            ? 'RETENIDO'
+            : 'POR PAGAR',
+      ]);
+      if (i % 2)
+        fila.eachCell(
+          (c) =>
+            (c.fill = {
+              type: 'pattern',
+              pattern: 'solid',
+              fgColor: { argb: GRIS },
+            }),
+        );
+    });
+    const ultima = hoja.rowCount;
+    const total = hoja.addRow([
+      'TOTAL',
+      null,
+      null,
+      null,
+      null,
+      ...['F', 'G', 'H', 'I'].map((c) => ({
+        formula: `SUM(${c}${primera}:${c}${ultima})`,
+      })),
+    ]);
+    total.font = { bold: true };
+    ['F', 'G', 'H', 'I'].forEach((c) => (hoja.getColumn(c).numFmt = SOLES));
+    hoja.getColumn('J').numFmt = 'dd/mm/yyyy';
+    [5, 36, 11, 22, 14, 13, 12, 16, 15, 13].forEach(
+      (w, i) => (hoja.getColumn(i + 1).width = w),
+    );
   }
 }

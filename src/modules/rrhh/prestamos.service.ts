@@ -12,6 +12,8 @@ import type {
   CrearPrestamoDto,
   FiltrosPrestamosDto,
 } from './dto/rrhh.schema.js';
+import { PagoFijoMovimiento } from './entities/pago-fijo-movimiento.entity.js';
+import { PagoFijo } from './entities/pago-fijo.entity.js';
 import { Prestamo } from './entities/prestamo.entity.js';
 import { TareoFila } from './entities/tareo-fila.entity.js';
 import {
@@ -32,6 +34,17 @@ function domingo(fecha: string) {
 
 const formatoFecha = (f: string) =>
   `${f.slice(8, 10)}/${f.slice(5, 7)}/${f.slice(0, 4)}`;
+
+const ultimoDia = (mes: string) =>
+  new Date(
+    Date.UTC(Number(mes.slice(0, 4)), Number(mes.slice(5, 7)), 0),
+  ).getUTCDate();
+/** Primer y último día del periodo de un pago fijo (quincena o mes). */
+const periodo = (p: Pick<PagoFijo, 'mes' | 'parte'>) => ({
+  desde: `${p.mes}-${p.parte === 2 ? '16' : '01'}`,
+  hasta: `${p.mes}-${p.parte === 1 ? '15' : String(ultimoDia(p.mes))}`,
+});
+const NOMBRE_PARTE = ['mes completo', '1.ª quincena', '2.ª quincena'];
 
 export const notaCuota = (p: Pick<Prestamo, 'fecha'>) =>
   `Cuota del préstamo del ${formatoFecha(p.fecha)}`;
@@ -93,11 +106,30 @@ export class PrestamosService {
         .where('m.prestamo_id IN (:...ids)', { ids: lista.map((p) => p.id) })
         .groupBy('m.prestamo_id')
         .getRawMany();
-      for (const f of filas)
+      // Lo descontado en los sueldos del personal fijo cuenta igual.
+      const fijos: typeof filas = await em
+        .getRepository(PagoFijoMovimiento)
+        .createQueryBuilder('m')
+        .innerJoin('m.pago', 'p')
+        .select('m.prestamo_id', 'prestamoId')
+        .addSelect(
+          'COALESCE(SUM(CASE WHEN p.pagado_en IS NOT NULL THEN m.monto ELSE 0 END), 0)',
+          'cobrado',
+        )
+        .addSelect(
+          'COALESCE(SUM(CASE WHEN p.pagado_en IS NULL THEN m.monto ELSE 0 END), 0)',
+          'programado',
+        )
+        .where('m.prestamo_id IN (:...ids)', { ids: lista.map((p) => p.id) })
+        .groupBy('m.prestamo_id')
+        .getRawMany();
+      for (const f of [...filas, ...fijos]) {
+        const antes = sumas.get(f.prestamoId) ?? { cobrado: 0, programado: 0 };
         sumas.set(f.prestamoId, {
-          cobrado: Number(f.cobrado),
-          programado: Number(f.programado),
+          cobrado: antes.cobrado + Number(f.cobrado),
+          programado: antes.programado + Number(f.programado),
         });
+      }
     }
     return lista.map((p) => {
       const { cobrado, programado } = sumas.get(p.id) ?? {
@@ -156,21 +188,39 @@ export class PrestamosService {
     });
     if (!p) throw new NotFoundException('El préstamo no existe');
     const [calculado] = await this.calcular([p]);
-    const cuotas = await this.movimientos.find({
-      where: { prestamoId: id },
-      relations: { fila: true },
-    });
+    const [cuotas, cuotasFijos] = await Promise.all([
+      this.movimientos.find({
+        where: { prestamoId: id },
+        relations: { fila: true },
+      }),
+      this.prestamos.manager.find(PagoFijoMovimiento, {
+        where: { prestamoId: id },
+        relations: { pago: true },
+      }),
+    ]);
     return {
       ...calculado,
-      cuotas: cuotas
-        .filter((c) => c.fila)
-        .map((c) => ({
-          filaId: c.filaId,
-          semana: c.fila!.semana,
-          monto: c.monto,
-          pagado: !!c.fila!.pagadoEn,
-        }))
-        .sort((a, b) => a.semana.localeCompare(b.semana)),
+      cuotas: [
+        ...cuotas
+          .filter((c) => c.fila)
+          .map((c) => ({
+            filaId: c.filaId,
+            semana: c.fila!.semana,
+            /** null = semana del tareo; si es sueldo fijo, el nombre del periodo. */
+            periodo: null as string | null,
+            monto: c.monto,
+            pagado: !!c.fila!.pagadoEn,
+          })),
+        ...cuotasFijos
+          .filter((c) => c.pago)
+          .map((c) => ({
+            filaId: c.pagoId,
+            semana: periodo(c.pago!).desde,
+            periodo: `Sueldo, ${NOMBRE_PARTE[c.pago!.parte]} de ${c.pago!.mes}`,
+            monto: c.monto,
+            pagado: !!c.pago!.pagadoEn,
+          })),
+      ].sort((a, b) => a.semana.localeCompare(b.semana)),
     };
   }
 
@@ -196,6 +246,15 @@ export class PrestamosService {
         .andWhere('f.semana >= :s', { s: domingo(dto.fecha) })
         .getMany();
       await this.aplicarCuotas(em, filas);
+      // Y en sus sueldos fijos sin pagar desde el mes del préstamo.
+      const pagos = await em
+        .getRepository(PagoFijo)
+        .createQueryBuilder('p')
+        .where('p.trabajador_id = :t', { t: dto.trabajadorId })
+        .andWhere('p.pagado_en IS NULL')
+        .andWhere('p.mes >= :m', { m: dto.fecha.slice(0, 7) })
+        .getMany();
+      await this.aplicarCuotasFijos(em, pagos);
       return p.id;
     });
     return this.detalle(id);
@@ -322,6 +381,130 @@ export class PrestamosService {
         );
       }
     if (nuevos.length) await em.save(nuevos);
+  }
+
+  /** Préstamos de esos trabajadores activos o con cuota en alguno de esos pagos fijos. */
+  async deTrabajadoresFijos(trabajadorIds: string[], pagoIds: string[]) {
+    if (!trabajadorIds.length) return [];
+    const lista = await this.prestamos.find({
+      where: { trabajadorId: In(trabajadorIds) },
+      order: { fecha: 'ASC', creadoEn: 'ASC' },
+    });
+    if (!lista.length) return [];
+    const enPagos = pagoIds.length
+      ? await this.prestamos.manager.find(PagoFijoMovimiento, {
+          where: {
+            pagoId: In(pagoIds),
+            prestamoId: In(lista.map((p) => p.id)),
+          },
+          select: { id: true, pagoId: true, prestamoId: true, monto: true },
+        })
+      : [];
+    const calculados = await this.calcular(lista);
+    return calculados
+      .map((p, i) => ({ ...p, trabajadorId: lista[i].trabajadorId }))
+      .filter(
+        (p) =>
+          p.estado === 'ACTIVO' || enPagos.some((m) => m.prestamoId === p.id),
+      )
+      .map((p) => ({
+        ...p,
+        cuotasEnPagos: enPagos
+          .filter((m) => m.prestamoId === p.id)
+          .map((m) => ({
+            pagoId: m.pagoId,
+            movimientoId: m.id,
+            monto: m.monto,
+          })),
+      }));
+  }
+
+  /** Igual que en el tareo: la cuota en cada sueldo fijo sin pagar, del más antiguo al más nuevo. */
+  async aplicarCuotasFijos(em: EntityManager, pagos: PagoFijo[]) {
+    const pendientes = pagos.filter((p) => !p.pagadoEn);
+    if (!pendientes.length) return;
+    const lista = await em.find(Prestamo, {
+      where: {
+        trabajadorId: In([...new Set(pendientes.map((p) => p.trabajadorId))]),
+      },
+      order: { fecha: 'ASC', creadoEn: 'ASC' },
+    });
+    if (!lista.length) return;
+    const calculados = await this.calcular(lista, em);
+    const yaTienen = await em.find(PagoFijoMovimiento, {
+      where: {
+        pagoId: In(pendientes.map((p) => p.id)),
+        prestamoId: In(lista.map((p) => p.id)),
+      },
+      select: { pagoId: true, prestamoId: true },
+    });
+    const falta = new Map(calculados.map((c) => [c.id, c.porProgramar]));
+    const nuevos: PagoFijoMovimiento[] = [];
+    for (const pago of [...pendientes].sort((a, b) =>
+      (a.mes + a.parte).localeCompare(b.mes + b.parte),
+    ))
+      for (const p of lista) {
+        if (p.trabajadorId !== pago.trabajadorId) continue;
+        // El préstamo se descuenta desde el periodo en que se dio.
+        if (p.fecha > periodo(pago).hasta) continue;
+        if (yaTienen.some((m) => m.pagoId === pago.id && m.prestamoId === p.id))
+          continue;
+        const monto = redondear2(Math.min(p.cuota, falta.get(p.id) ?? 0));
+        if (monto <= 0) continue;
+        falta.set(p.id, redondear2((falta.get(p.id) ?? 0) - monto));
+        nuevos.push(
+          em.create(PagoFijoMovimiento, {
+            pagoId: pago.id,
+            tipo: TipoMovimiento.DESCUENTO,
+            concepto: ConceptoMovimiento.PRESTAMO,
+            monto,
+            fecha: null,
+            nota: notaCuota(p),
+            prestamoId: p.id,
+          }),
+        );
+      }
+    if (nuevos.length) await em.save(nuevos);
+  }
+
+  /** Cambia (o quita, con 0) la cuota de un préstamo en un sueldo fijo sin pagar. */
+  async fijarCuotaFijo(
+    em: EntityManager,
+    pago: PagoFijo,
+    prestamoId: string,
+    monto: number,
+  ) {
+    if (pago.pagadoEn)
+      throw new BadRequestException(
+        'Ya se le pagó: deshaz el pago para cambiar la cuota',
+      );
+    const p = await em.findOneBy(Prestamo, { id: prestamoId });
+    if (!p || p.trabajadorId !== pago.trabajadorId)
+      throw new NotFoundException('Ese préstamo no es de este trabajador');
+    const [c] = await this.calcular([p], em);
+    const actual = await em.findOneBy(PagoFijoMovimiento, {
+      pagoId: pago.id,
+      prestamoId,
+    });
+    const maximo = redondear2(c.porProgramar + (actual?.monto ?? 0));
+    if (monto > maximo)
+      throw new BadRequestException(
+        `Solo le falta descontar S/ ${maximo.toFixed(2)} de este préstamo`,
+      );
+    if (actual && monto <= 0) await em.delete(PagoFijoMovimiento, actual.id);
+    else if (actual) await em.update(PagoFijoMovimiento, actual.id, { monto });
+    else if (monto > 0)
+      await em.save(
+        em.create(PagoFijoMovimiento, {
+          pagoId: pago.id,
+          tipo: TipoMovimiento.DESCUENTO,
+          concepto: ConceptoMovimiento.PRESTAMO,
+          monto,
+          fecha: null,
+          nota: notaCuota(p),
+          prestamoId,
+        }),
+      );
   }
 
   /** Cambia (o quita, con 0) la cuota de un préstamo en una semana sin pagar. */
