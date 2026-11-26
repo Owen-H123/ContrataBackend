@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Res,
 } from '@nestjs/common';
@@ -18,6 +19,8 @@ import { Roles } from '../../../core/decorators/roles.decorator.js';
 import { Rol } from '../../../shared/enums/rol.enum.js';
 import { idSchema } from '../../../shared/validation/id.schema.js';
 import {
+  type AsignarTecnicoVisitaDto,
+  asignarTecnicoVisitaSchema,
   type CambiarEstadoVisitaDto,
   cambiarEstadoVisitaSchema,
   type ComentarVisitaDto,
@@ -91,6 +94,17 @@ export class VisitasController {
     @CurrentUser() usuario: UsuarioAutenticado,
   ) {
     return this.visitas.editar(id, dto, usuario);
+  }
+
+  /** Cambia el técnico a cargo de la visita. */
+  @Roles(Rol.ADMIN)
+  @Put(':id/tecnico')
+  asignarTecnico(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: asignarTecnicoVisitaSchema }) dto: AsignarTecnicoVisitaDto,
+    @CurrentUser() usuario: UsuarioAutenticado,
+  ) {
+    return this.visitas.asignarTecnico(id, dto, usuario);
   }
 
   /** Pendiente de visitar, visitado o acceso rechazado. */

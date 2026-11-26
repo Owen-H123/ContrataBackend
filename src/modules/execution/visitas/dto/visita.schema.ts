@@ -40,6 +40,8 @@ export const crearVisitaSchema = z
     sitioNuevo: sitioNuevoSchema.optional(),
     fecha,
     observaciones: observaciones.optional(),
+    /** Técnico a cargo. Solo lo usa un ADMIN; si falta, queda a nombre de quien la registra. */
+    tecnicoId: z.uuid('El técnico no es válido').optional(),
   })
   .refine((d) => !!d.sitioId !== !!d.sitioNuevo, {
     message: 'Elige un sitio de la lista o registra uno nuevo',
@@ -49,6 +51,12 @@ export type CrearVisitaDto = z.infer<typeof crearVisitaSchema>;
 
 export const editarVisitaSchema = z.object({ fecha, observaciones }).partial();
 export type EditarVisitaDto = z.infer<typeof editarVisitaSchema>;
+
+/** ADMIN: cambia el técnico a cargo de la visita. */
+export const asignarTecnicoVisitaSchema = z.object({
+  tecnicoId: z.uuid('El técnico no es válido'),
+});
+export type AsignarTecnicoVisitaDto = z.infer<typeof asignarTecnicoVisitaSchema>;
 
 export const cambiarEstadoVisitaSchema = z.object({
   estado: z.enum(EstadoVisita),
