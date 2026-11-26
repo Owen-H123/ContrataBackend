@@ -8,7 +8,14 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Between, type FindOptionsWhere, ILike, In, Repository } from 'typeorm';
+import {
+  Between,
+  Brackets,
+  type FindOptionsWhere,
+  ILike,
+  In,
+  Repository,
+} from 'typeorm';
 import type { UsuarioAutenticado } from '../../../core/auth/types/usuario-autenticado.js';
 import { escaparLike } from '../../../shared/database/escapar-like.js';
 import { redondear2 } from '../../../shared/entities/numerico.transformer.js';
@@ -20,6 +27,11 @@ import { NotificacionesService } from '../../core/notificaciones/notificaciones.
 import { Usuario } from '../../core/usuarios/entities/usuario.entity.js';
 import { Sitio } from '../../master/sitios/entities/sitio.entity.js';
 import { Trabajador } from '../../rrhh/entities/trabajador.entity.js';
+import {
+  EtapaTrabajo,
+  Trabajo,
+} from '../../planning/trabajos/entities/trabajo.entity.js';
+import { codigoTrabajo } from '../../planning/trabajos/trabajos.service.js';
 import {
   type AbonarDto,
   type AprobarDto,
@@ -132,7 +144,7 @@ export class SolicitudesService {
       : base;
     const filas = await this.solicitudes.find({
       where,
-      relations: { solicitante: true, sitio: true },
+      relations: { solicitante: true, sitio: true, trabajo: { orden: true } },
       order: { numero: 'DESC' },
       take: 500,
     });
@@ -235,6 +247,7 @@ export class SolicitudesService {
       Permiso.PEDIR_DINERO,
       'No tienes permiso para pedir dinero',
     );
+    dto = await this.conTrabajo(dto);
     if (dto.sitioId) await this.exigirSitio(dto.sitioId);
     const { id } = await this.solicitudes.save(
       this.solicitudes.create({
@@ -263,8 +276,10 @@ export class SolicitudesService {
     usuario: UsuarioAutenticado,
   ) {
     const s = await this.propiaPendiente(id, usuario);
+    dto = await this.conTrabajo(dto);
     if (dto.sitioId) await this.exigirSitio(dto.sitioId);
     delete s.sitio;
+    delete s.trabajo;
     Object.assign(s, this.limpiar(dto));
     await this.solicitudes.save(s);
     return this.detalle(await this.cargar(id), usuario);
@@ -546,6 +561,7 @@ export class SolicitudesService {
     return {
       ...dto,
       sitioId: dto.sitioId ?? null,
+      trabajoId: dto.trabajoId ?? null,
       centroCosto: dto.sitioId
         ? null
         : (dto.centroCosto?.toUpperCase() ?? null),
@@ -561,6 +577,7 @@ export class SolicitudesService {
       relations: {
         solicitante: true,
         sitio: true,
+        trabajo: { orden: true },
         revisadoPor: true,
         abonadoPor: true,
         archivos: { subidoPor: true },
@@ -568,6 +585,71 @@ export class SolicitudesService {
     });
     if (!s) throw new NotFoundException('La solicitud no existe');
     return s;
+  }
+
+  private trabajoBreve(t: Trabajo) {
+    return {
+      id: t.id,
+      codigo: codigoTrabajo(t.numero),
+      descripcion: t.descripcion,
+      sitioId: t.sitioId,
+      oc: t.orden?.numero ?? t.ocNumero,
+    };
+  }
+
+  /**
+   * Trabajos para elegir en la solicitud (quien pide dinero no entra al seguimiento): los
+   * abiertos del sitio, o los que coinciden con lo que escribe.
+   */
+  async trabajosParaElegir(f: { q?: string; sitioId?: string }) {
+    const qb = this.solicitudes.manager
+      .getRepository(Trabajo)
+      .createQueryBuilder('t')
+      .leftJoinAndSelect('t.sitio', 'sitio')
+      .leftJoinAndSelect('t.orden', 'orden')
+      .where('t.etapa NOT IN (:...cerrados)', {
+        cerrados: [EtapaTrabajo.COBRADO, EtapaTrabajo.CANCELADO],
+      })
+      .orderBy('t.solicitado_en', 'DESC')
+      .take(15);
+    if (f.sitioId) qb.andWhere('t.sitio_id = :s', { s: f.sitioId });
+    if (f.q)
+      qb.andWhere(
+        new Brackets((w) =>
+          w
+            .where('t.descripcion ILIKE :q')
+            .orWhere('sitio.codigo ILIKE :q')
+            .orWhere('sitio.nombre ILIKE :q')
+            .orWhere('t.oc_numero ILIKE :q')
+            .orWhere('orden.numero ILIKE :q')
+            .orWhere("CONCAT('TR-', LPAD(t.numero::text, 4, '0')) ILIKE :q"),
+        ),
+        { q: `%${f.q}%` },
+      );
+    return (await qb.getMany()).map((t) => ({
+      ...this.trabajoBreve(t),
+      sitio: t.sitio
+        ? { id: t.sitio.id, codigo: t.sitio.codigo, nombre: t.sitio.nombre }
+        : null,
+    }));
+  }
+
+  /** El trabajo tiene que existir; si no se eligió sitio, se toma el del trabajo. */
+  private async conTrabajo<
+    T extends {
+      trabajoId?: string | null;
+      sitioId?: string | null;
+      centroCosto?: string | null;
+    },
+  >(dto: T): Promise<T> {
+    if (!dto.trabajoId) return dto;
+    const t = await this.solicitudes.manager.findOneBy(Trabajo, {
+      id: dto.trabajoId,
+    });
+    if (!t) throw new NotFoundException('El trabajo no existe');
+    return dto.sitioId || dto.centroCosto
+      ? dto
+      : { ...dto, sitioId: t.sitioId };
   }
 
   private async exigirSitio(id: string) {
@@ -654,6 +736,7 @@ export class SolicitudesService {
       sitio: s.sitio
         ? { id: s.sitio.id, codigo: s.sitio.codigo, nombre: s.sitio.nombre }
         : null,
+      trabajo: s.trabajo ? this.trabajoBreve(s.trabajo) : null,
       solicitante: s.solicitante
         ? { id: s.solicitante.id, nombre: s.solicitante.nombre }
         : null,

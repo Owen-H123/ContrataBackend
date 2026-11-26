@@ -18,6 +18,8 @@ import {
   type AprobarDto,
   aprobarSchema,
   beneficiariosSchema,
+  type TrabajosParaElegirDto,
+  trabajosParaElegirSchema,
   type CrearSolicitudDto,
   crearSolicitudSchema,
   type EditarSolicitudDto,
@@ -55,6 +57,14 @@ export class SolicitudesController {
   @Get('beneficiarios')
   beneficiarios(@Query({ schema: beneficiariosSchema }) q: { q: string }) {
     return this.solicitudes.beneficiarios(q.q);
+  }
+
+  /** Trabajos abiertos para elegir a qué se carga la solicitud. */
+  @Get('trabajos')
+  trabajos(
+    @Query({ schema: trabajosParaElegirSchema }) f: TrabajosParaElegirDto,
+  ) {
+    return this.solicitudes.trabajosParaElegir(f);
   }
 
   @Get(':id')
