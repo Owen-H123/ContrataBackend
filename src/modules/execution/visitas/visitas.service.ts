@@ -296,9 +296,10 @@ export class VisitasService {
     const sitioId = dto.sitioId
       ? await this.exigirSitio(dto.sitioId)
       : await this.crearSitio(dto.sitioNuevo!);
-    // Un ADMIN puede dejarla a cargo de un técnico; si no, queda a nombre de quien la registra.
+    // Un ADMIN o SUPERVISOR puede dejarla a cargo de un técnico; si no, queda a nombre de quien la registra.
     const tecnicoId =
-      usuario.rol === Rol.ADMIN && dto.tecnicoId
+      (usuario.rol === Rol.ADMIN || usuario.rol === Rol.SUPERVISOR) &&
+      dto.tecnicoId
         ? (await this.usuarios.exigirTecnicosActivos([dto.tecnicoId]))[0].id
         : usuario.id;
     const { id } = await this.visitas.save(
@@ -708,15 +709,15 @@ export class VisitasService {
     return visita;
   }
 
-  /** Edita el técnico que la registró o un ADMIN, en cualquier estado. */
+  /** Edita el técnico que la registró, un ADMIN o un SUPERVISOR, en cualquier estado. */
   private async buscarParaEditar(
     id: string,
     usuario: UsuarioAutenticado,
   ): Promise<VisitaTecnica> {
     const visita = await this.buscarParaVer(id, usuario);
-    if (usuario.rol !== Rol.ADMIN && visita.tecnicoId !== usuario.id) {
+    if (usuario.rol === Rol.TECNICO && visita.tecnicoId !== usuario.id) {
       throw new ForbiddenException(
-        'Solo el técnico de la visita o un administrador puede cambiarla',
+        'Solo el técnico de la visita, un supervisor o un administrador puede cambiarla',
       );
     }
     return visita;

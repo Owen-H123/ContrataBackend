@@ -35,13 +35,14 @@ export class SitiosController {
     return this.sitios.obtener(id);
   }
 
-  @Roles(Rol.ADMIN)
+  // El supervisor también registra sitios (pedido de RYSCOM); borrar sigue siendo del admin.
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR)
   @Post()
   crear(@Body({ schema: crearSitioSchema }) dto: CrearSitioDto) {
     return this.sitios.crear(dto);
   }
 
-  @Roles(Rol.ADMIN)
+  @Roles(Rol.ADMIN, Rol.SUPERVISOR)
   @Patch(':id')
   actualizar(
     @Param('id', { schema: idSchema }) id: string,
