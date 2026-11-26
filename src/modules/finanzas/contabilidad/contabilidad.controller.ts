@@ -13,6 +13,10 @@ import type { Response } from 'express';
 import type { UsuarioAutenticado } from '../../../core/auth/types/usuario-autenticado.js';
 import { CurrentUser } from '../../../core/decorators/current-user.decorator.js';
 import { Roles } from '../../../core/decorators/roles.decorator.js';
+import {
+  type SubirAdjuntoDto,
+  subirAdjuntoSchema,
+} from '../../../shared/archivos/adjuntos.js';
 import { Rol } from '../../../shared/enums/rol.enum.js';
 import { idSchema } from '../../../shared/validation/id.schema.js';
 import { ContabilidadService } from './contabilidad.service.js';
@@ -115,6 +119,31 @@ export class ContabilidadController {
     @CurrentUser() usuario: UsuarioAutenticado,
   ) {
     return this.contabilidad.agregarPago(id, dto, usuario);
+  }
+
+  @Post('comprobantes/:id/archivos')
+  pedirArchivo(
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: subirAdjuntoSchema }) dto: SubirAdjuntoDto,
+    @CurrentUser() usuario: UsuarioAutenticado,
+  ) {
+    return this.contabilidad.pedirSubidaArchivo(id, dto, usuario);
+  }
+
+  @Post('comprobantes/:id/archivos/:archivoId/confirmar')
+  confirmarArchivo(
+    @Param('id', { schema: idSchema }) id: string,
+    @Param('archivoId', { schema: idSchema }) archivoId: string,
+  ) {
+    return this.contabilidad.confirmarArchivo(id, archivoId);
+  }
+
+  @Delete('comprobantes/:id/archivos/:archivoId')
+  quitarArchivo(
+    @Param('id', { schema: idSchema }) id: string,
+    @Param('archivoId', { schema: idSchema }) archivoId: string,
+  ) {
+    return this.contabilidad.quitarArchivo(id, archivoId);
   }
 
   @Delete('pagos/:id')

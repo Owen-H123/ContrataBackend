@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Brackets, type EntityManager, Repository } from 'typeorm';
+import { Brackets, type EntityManager, In, Repository } from 'typeorm';
 import type { UsuarioAutenticado } from '../../../core/auth/types/usuario-autenticado.js';
 import { redondear2 } from '../../../shared/entities/numerico.transformer.js';
 import { Cliente } from '../../master/clientes/entities/cliente.entity.js';
@@ -23,6 +23,15 @@ import type {
 } from './dto/contabilidad.schema.js';
 import { Comprobante, TipoComprobante } from './entities/comprobante.entity.js';
 import { PagoComprobante } from './entities/pago-comprobante.entity.js';
+import { ArchivoComprobante } from './entities/archivo-comprobante.entity.js';
+import { StorageService } from '../../../services/storage/storage.service.js';
+import {
+  confirmarSubida,
+  conEnlaces,
+  pedirSubida,
+  quitarAdjunto,
+  type SubirAdjuntoDto,
+} from '../../../shared/archivos/adjuntos.js';
 
 export type EstadoPago = 'PENDIENTE' | 'PARCIAL' | 'PAGADO' | 'ANULADO';
 
@@ -110,7 +119,58 @@ export class ContabilidadService {
     private readonly comprobantes: Repository<Comprobante>,
     @InjectRepository(PagoComprobante)
     private readonly pagos: Repository<PagoComprobante>,
+    @InjectRepository(ArchivoComprobante)
+    private readonly archivos: Repository<ArchivoComprobante>,
+    private readonly storage: StorageService,
   ) {}
+
+  /** Agrega a cada comprobante sus archivos (PDF o fotos) con su enlace de descarga. */
+  private async conArchivos<T extends { id: string }>(lista: T[]) {
+    if (!lista.length) return lista.map((c) => ({ ...c, archivos: [] }));
+    const archivos = await this.archivos.find({
+      where: { comprobanteId: In(lista.map((c) => c.id)), confirmado: true },
+      order: { creadoEn: 'ASC' },
+    });
+    const enlaces = await conEnlaces(this.storage, archivos);
+    return lista.map((c) => ({
+      ...c,
+      archivos: enlaces.filter((_, i) => archivos[i].comprobanteId === c.id),
+    }));
+  }
+
+  // ---------- Archivos del comprobante ----------
+
+  async pedirSubidaArchivo(
+    id: string,
+    dto: SubirAdjuntoDto,
+    usuario: UsuarioAutenticado,
+  ) {
+    const c = await this.comprobantes.findOneBy({ id });
+    if (!c) throw new NotFoundException('El comprobante no existe');
+    return pedirSubida(this.storage, this.archivos, {
+      padre: { comprobanteId: c.id },
+      carpeta: `contabilidad/${c.tipo.toLowerCase()}/${c.fechaEmision.slice(0, 7)}/${c.id}`,
+      max: 5,
+      dto,
+      usuarioId: usuario.id,
+    });
+  }
+
+  async confirmarArchivo(id: string, archivoId: string) {
+    await confirmarSubida(this.storage, this.archivos, {
+      id: archivoId,
+      comprobanteId: id,
+    });
+    return this.obtener(id);
+  }
+
+  async quitarArchivo(id: string, archivoId: string) {
+    await quitarAdjunto(this.storage, this.archivos, {
+      id: archivoId,
+      comprobanteId: id,
+    });
+    return this.obtener(id);
+  }
 
   async listar(f: FiltrosComprobanteDto) {
     const qb = this.comprobantes
@@ -141,7 +201,9 @@ export class ContabilidadService {
         ),
         { q: `%${f.q}%` },
       );
-    const todos = (await qb.getMany()).map(calcularComprobante);
+    const todos = await this.conArchivos(
+      (await qb.getMany()).map(calcularComprobante),
+    );
     const vigentes = todos.filter((c) => c.estado !== 'ANULADO');
     const suma = (lista: typeof todos, k: 'totalSoles' | 'saldoSoles') =>
       redondear2(lista.reduce((s, c) => s + c[k], 0));
@@ -173,7 +235,8 @@ export class ContabilidadService {
       relations: { pagos: true, trabajo: { sitio: true } },
     });
     if (!c) throw new NotFoundException('El comprobante no existe');
-    return calcularComprobante(c);
+    const [conA] = await this.conArchivos([calcularComprobante(c)]);
+    return conA;
   }
 
   /** Clientes y proveedores ya usados, para autocompletar RUC y nombre. */

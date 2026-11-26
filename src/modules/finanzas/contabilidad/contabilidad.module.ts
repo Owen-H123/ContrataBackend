@@ -4,6 +4,10 @@ import { ContabilidadController } from './contabilidad.controller.js';
 import { ContabilidadService } from './contabilidad.service.js';
 import { Comprobante } from './entities/comprobante.entity.js';
 import { PagoComprobante } from './entities/pago-comprobante.entity.js';
+import { ArchivoComprobante } from './entities/archivo-comprobante.entity.js';
+import { ArchivoSolicitud } from '../solicitudes/entities/archivo-solicitud.entity.js';
+import { VoucherTareo } from '../../rrhh/entities/voucher-tareo.entity.js';
+import { VoucherPagoFijo } from '../../rrhh/entities/voucher-pago-fijo.entity.js';
 import { ReportesService } from './reportes.service.js';
 import { Trabajo } from '../../planning/trabajos/entities/trabajo.entity.js';
 import { PagoFijo } from '../../rrhh/entities/pago-fijo.entity.js';
@@ -16,6 +20,11 @@ import { SolicitudDinero } from '../solicitudes/entities/solicitud-dinero.entity
     TypeOrmModule.forFeature([
       Comprobante,
       PagoComprobante,
+      ArchivoComprobante,
+      // Comprobantes de cada pago, para «todos los pagos».
+      VoucherTareo,
+      VoucherPagoFijo,
+      ArchivoSolicitud,
       // Para «todos los pagos» y el panel: se leen, no se modifican.
       TareoFila,
       PagoFijo,

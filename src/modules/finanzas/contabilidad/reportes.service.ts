@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import ExcelJS from 'exceljs';
-import { In, IsNull, Not, Repository } from 'typeorm';
+import { In, IsNull, Not, type ObjectLiteral, Repository } from 'typeorm';
 import { redondear2 } from '../../../shared/entities/numerico.transformer.js';
 import {
   EtapaTrabajo,
@@ -19,6 +19,15 @@ import {
 import { calcularComprobante, enSoles } from './contabilidad.service.js';
 import { Comprobante, TipoComprobante } from './entities/comprobante.entity.js';
 import { PagoComprobante } from './entities/pago-comprobante.entity.js';
+import { ArchivoComprobante } from './entities/archivo-comprobante.entity.js';
+import {
+  ArchivoSolicitud,
+  TipoArchivoSolicitud,
+} from '../solicitudes/entities/archivo-solicitud.entity.js';
+import { VoucherTareo } from '../../rrhh/entities/voucher-tareo.entity.js';
+import { VoucherPagoFijo } from '../../rrhh/entities/voucher-pago-fijo.entity.js';
+import { StorageService } from '../../../services/storage/storage.service.js';
+import { conEnlaces } from '../../../shared/archivos/adjuntos.js';
 
 /** De dónde sale cada pago que hace RYSCOM. */
 export type OrigenPago = 'TAREO' | 'SUELDO_FIJO' | 'SOLICITUD' | 'PROVEEDOR';
@@ -36,6 +45,13 @@ export interface PagoUnificado {
   /** Sitio o trabajo al que corresponde, si se sabe. */
   proyecto: string | null;
   comprobante: string | null;
+  /** Voucher o comprobante del pago (fotos o PDF), con su enlace de descarga. */
+  archivos?: {
+    id: string;
+    nombreArchivo: string;
+    tipoContenido: string;
+    url: string | null;
+  }[];
 }
 
 const NOMBRE_PARTE = ['mes', '1.ª quincena', '2.ª quincena'];
@@ -57,7 +73,54 @@ export class ReportesService {
     private readonly solicitudes: Repository<SolicitudDinero>,
     @InjectRepository(Trabajo)
     private readonly trabajos: Repository<Trabajo>,
+    @InjectRepository(VoucherTareo)
+    private readonly vouchersTareo: Repository<VoucherTareo>,
+    @InjectRepository(VoucherPagoFijo)
+    private readonly vouchersFijo: Repository<VoucherPagoFijo>,
+    @InjectRepository(ArchivoSolicitud)
+    private readonly archivosSolicitud: Repository<ArchivoSolicitud>,
+    @InjectRepository(ArchivoComprobante)
+    private readonly archivosComprobante: Repository<ArchivoComprobante>,
+    private readonly storage: StorageService,
   ) {}
+
+  /** Pone en cada pago su voucher o comprobante, según de dónde viene. */
+  private async adjuntar(pagos: PagoUnificado[]) {
+    const ids = (o: OrigenPago) =>
+      pagos.filter((p) => p.origen === o).map((p) => p.id);
+    const buscar = <T extends ObjectLiteral>(
+      repo: Repository<T>,
+      campo: string,
+      lista: string[],
+      extra = {},
+    ) =>
+      lista.length
+        ? repo.find({
+            where: { [campo]: In(lista), confirmado: true, ...extra } as never,
+            order: { creadoEn: 'ASC' } as never,
+          })
+        : Promise.resolve([] as T[]);
+    const [tareo, fijos, solicitudes, comprobantes] = await Promise.all([
+      buscar(this.vouchersTareo, 'filaId', ids('TAREO')),
+      buscar(this.vouchersFijo, 'pagoId', ids('SUELDO_FIJO')),
+      buscar(this.archivosSolicitud, 'solicitudId', ids('SOLICITUD'), {
+        tipo: TipoArchivoSolicitud.VOUCHER,
+      }),
+      buscar(this.archivosComprobante, 'comprobanteId', ids('PROVEEDOR')),
+    ]);
+    const todos = [
+      ...tareo.map((a) => ({ padre: a.filaId, a })),
+      ...fijos.map((a) => ({ padre: a.pagoId, a })),
+      ...solicitudes.map((a) => ({ padre: a.solicitudId, a })),
+      ...comprobantes.map((a) => ({ padre: a.comprobanteId, a })),
+    ];
+    const enlaces = await conEnlaces(
+      this.storage,
+      todos.map((t) => t.a),
+    );
+    for (const p of pagos)
+      p.archivos = enlaces.filter((_, i) => todos[i].padre === p.id);
+  }
 
   /** Todo lo que RYSCOM pagó en el mes: planilla, sueldos, solicitudes y proveedores. */
   async pagos(mes: string): Promise<{
@@ -84,6 +147,7 @@ export class ReportesService {
       this.solicitudes
         .createQueryBuilder('s')
         .leftJoinAndSelect('s.sitio', 'sitio')
+        .leftJoinAndSelect('s.trabajo', 'trabajo')
         .where('s.abonado_en BETWEEN :desde AND :hasta', entre)
         .andWhere('s.estado IN (:...estados)', {
           estados: [EstadoSolicitud.ABONADA, EstadoSolicitud.RENDIDA],
@@ -140,9 +204,11 @@ export class ReportesService {
         concepto: `${s.tipo === 'REEMBOLSO' ? 'Reembolso' : 'Adelanto'} SD-${String(s.numero).padStart(4, '0')}${s.concepto ? `: ${s.concepto}` : ''}`,
         medio: s.medioAbono,
         operacion: s.operacion,
-        proyecto: s.sitio
-          ? `${s.sitio.codigo} ${s.sitio.nombre}`
-          : s.centroCosto,
+        proyecto: s.trabajo
+          ? `${codigoTrabajo(s.trabajo.numero)} ${s.sitio?.nombre ?? ''}`.trim()
+          : s.sitio
+            ? `${s.sitio.codigo} ${s.sitio.nombre}`
+            : s.centroCosto,
         comprobante: null,
       })),
       ...proveedores.map((p) => ({
@@ -160,6 +226,7 @@ export class ReportesService {
         comprobante: `${p.comprobante!.serie}-${p.comprobante!.numero}`,
       })),
     ].sort((a, b) => b.fecha.localeCompare(a.fecha));
+    await this.adjuntar(pagos);
 
     const suma = (o?: OrigenPago) =>
       redondear2(
@@ -280,6 +347,24 @@ export class ReportesService {
       if (x.tipo === TipoComprobante.VENTA) fila.ingresos += base;
       else fila.gastos += base;
       mapa.set(x.trabajo.id, fila);
+    }
+    // Lo abonado por solicitudes de dinero cargadas al trabajo también es gasto.
+    const solicitudes = await this.solicitudes.find({
+      where: {
+        trabajoId: Not(IsNull()),
+        estado: In([EstadoSolicitud.ABONADA, EstadoSolicitud.RENDIDA]),
+      },
+      relations: { trabajo: { sitio: true } },
+    });
+    for (const s of solicitudes) {
+      if (!s.trabajo || !s.abonadoEn?.startsWith(anio)) continue;
+      const fila = mapa.get(s.trabajo.id) ?? {
+        trabajo: s.trabajo,
+        ingresos: 0,
+        gastos: 0,
+      };
+      fila.gastos += s.montoAprobado ?? s.monto;
+      mapa.set(s.trabajo.id, fila);
     }
     return [...mapa.values()]
       .map(({ trabajo, ingresos, gastos }) => ({
