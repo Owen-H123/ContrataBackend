@@ -14,6 +14,7 @@ import { calcularPago } from '../../rrhh/sueldos-fijos.service.js';
 import { calcularFila } from '../../rrhh/tareo.service.js';
 import {
   EstadoSolicitud,
+  NOMBRE_TIPO_SOLICITUD,
   SolicitudDinero,
 } from '../solicitudes/entities/solicitud-dinero.entity.js';
 import { calcularComprobante, enSoles } from './contabilidad.service.js';
@@ -201,7 +202,7 @@ export class ReportesService {
         fecha: s.abonadoEn!,
         monto: s.montoAprobado ?? s.monto,
         aQuien: s.beneficiario,
-        concepto: `${s.tipo === 'REEMBOLSO' ? 'Reembolso' : 'Adelanto'} SD-${String(s.numero).padStart(4, '0')}${s.concepto ? `: ${s.concepto}` : ''}`,
+        concepto: `${NOMBRE_TIPO_SOLICITUD[s.tipo]} SD-${String(s.numero).padStart(4, '0')}${s.concepto ? `: ${s.concepto}` : ''}`,
         medio: s.medioAbono,
         operacion: s.operacion,
         proyecto: s.trabajo

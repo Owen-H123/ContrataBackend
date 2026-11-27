@@ -15,15 +15,26 @@ import { Sitio } from '../../../master/sitios/entities/sitio.entity.js';
 import { Trabajo } from '../../../planning/trabajos/entities/trabajo.entity.js';
 import { ArchivoSolicitud } from './archivo-solicitud.entity.js';
 
-/** Adelanto: se pide antes de gastar y luego se rinde. Reembolso: ya se gastó, con boletas. */
+/**
+ * Adelanto: se pide antes de gastar y luego se rinde. Reembolso: ya se gastó, con boletas.
+ * Pago directo: se abona y listo, no se rinde (por ejemplo, el pago a una persona por un servicio).
+ */
 export enum TipoSolicitud {
   ADELANTO = 'ADELANTO',
   REEMBOLSO = 'REEMBOLSO',
+  PAGO = 'PAGO',
 }
+
+/** Nombre para mostrar de cada tipo. */
+export const NOMBRE_TIPO_SOLICITUD: Record<TipoSolicitud, string> = {
+  ADELANTO: 'Adelanto',
+  REEMBOLSO: 'Reembolso',
+  PAGO: 'Pago directo',
+};
 
 /**
  * Recorrido: PENDIENTE → APROBADA o RECHAZADA → ABONADA → RENDIDA.
- * Un reembolso pasa directo a RENDIDA al abonarse (las boletas ya venían).
+ * Un reembolso o un pago directo pasa directo a RENDIDA (cerrada) al abonarse.
  */
 export enum EstadoSolicitud {
   PENDIENTE = 'PENDIENTE',
