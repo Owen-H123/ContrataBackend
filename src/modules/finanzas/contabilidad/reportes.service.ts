@@ -462,7 +462,7 @@ export class ReportesService {
           anulado ? 0 : x.noGravado,
           anulado ? 0 : x.total,
           anulado ? 0 : x.totalSoles,
-          x.pagado,
+          anulado ? 0 : x.pagado,
           anulado ? 0 : x.saldo,
           x.estado,
           ...(compra ? [x.categoria ?? ''] : []),
