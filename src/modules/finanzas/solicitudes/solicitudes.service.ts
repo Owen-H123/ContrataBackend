@@ -422,17 +422,16 @@ export class SolicitudesService {
       EstadoSolicitud.APROBADA,
       'Solo se abona una solicitud aprobada',
     );
+    // Solo el adelanto se rinde después. El reembolso ya trae sus boletas y el
+    // pago directo no se rinde: con el abono quedan cerrados.
+    const cierra = s.tipo !== TipoSolicitud.ADELANTO;
     Object.assign(s, {
-      // El reembolso ya trae sus boletas: con el abono queda cerrado.
-      estado:
-        s.tipo === TipoSolicitud.REEMBOLSO
-          ? EstadoSolicitud.RENDIDA
-          : EstadoSolicitud.ABONADA,
+      estado: cierra ? EstadoSolicitud.RENDIDA : EstadoSolicitud.ABONADA,
       abonadoPorId: usuario.id,
       abonadoEn: dto.abonadoEn,
       medioAbono: dto.medioAbono,
       operacion: dto.operacion ?? null,
-      rendidoEn: s.tipo === TipoSolicitud.REEMBOLSO ? new Date() : null,
+      rendidoEn: cierra ? new Date() : null,
     });
     delete s.abonadoPor;
     await this.solicitudes.save(s);
